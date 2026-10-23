@@ -1,0 +1,36 @@
+# Convenience wrapper for C core + web build + tests
+
+# Determine build directory
+BUILD_DIR = build
+
+# Default target: build core library and CLI test
+all: $(BUILD_DIR)/libsugoroku.a $(BUILD_DIR)/cli_test
+
+# Create build directory
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+# Compile core library
+$(BUILD_DIR)/libsugoroku.a: core/sugoroku.c $(BUILD_DIR)
+	gcc -std=c11 -O2 -c $< -o $(BUILD_DIR)/sugoroku.o
+	ar rcs $@ $(BUILD_DIR)/sugoroku.o
+
+# Compile CLI test
+$(BUILD_DIR)/cli_test: core/cli_test.c $(BUILD_DIR)/libsugoroku.a $(BUILD_DIR)
+	gcc -std=c11 -O2 $< -L$(BUILD_DIR) -lsugoroku -o $@
+
+# Run tests
+test: $(BUILD_DIR)/cli_test
+	@echo "Running CLI tests..."
+	@$(BUILD_DIR)/cli_test
+
+# Clean build artifacts
+clean:
+	rm -rf $(BUILD_DIR)
+
+# Start mobile app HTTP server
+mobile:
+	@echo "Starting mobile HTTP server..."
+	python3 -m http.server 8080 --bind 0.0.0.0
+
+.PHONY: all test clean mobile
