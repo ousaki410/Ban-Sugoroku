@@ -12,12 +12,12 @@ $(BUILD_DIR):
 
 # Compile core library
 $(BUILD_DIR)/libsugoroku.a: core/sugoroku.c $(BUILD_DIR)
-	gcc -std=c11 -O2 -c $< -o $(BUILD_DIR)/sugoroku.o
+	gcc -std=c11 -O2 -Wall -Wextra -Werror -c $< -o $(BUILD_DIR)/sugoroku.o
 	ar rcs $@ $(BUILD_DIR)/sugoroku.o
 
 # Compile CLI test
 $(BUILD_DIR)/cli_test: core/cli_test.c $(BUILD_DIR)/libsugoroku.a $(BUILD_DIR)
-	gcc -std=c11 -O2 $< -L$(BUILD_DIR) -lsugoroku -o $@
+	gcc -std=c11 -O2 -Wall -Wextra -Werror $< -L$(BUILD_DIR) -lsugoroku -o $@
 
 # Run tests
 test: $(BUILD_DIR)/cli_test

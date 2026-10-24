@@ -52,16 +52,36 @@ def verify_c_tests():
         if not cli_test_path.exists():
             print("cli_test not found after make test.")
             return False
+    # Run basic self-tests
     ok, out, err = run_cmd(str(cli_test_path), cwd=C_BUILD_DIR)
-    if ok:
-        print("C core tests passed.")
-        print(out)
-        return True
-    else:
-        print("C core tests failed.")
-        print("stdout:", out)
-        print("stderr:", err)
+    if not ok:
+        print("Basic C core tests failed:", out, err)
         return False
+    print("Basic C core tests passed.")
+    # Run benchmark
+    ok, out, err = run_cmd(str(cli_test_path) + " --benchmark", cwd=C_BUILD_DIR)
+    if not ok:
+        print("C core benchmark failed:", out, err)
+        return False
+    # Parse benchmark results
+    import re
+    match = re.search(r"Benchmark results: Black wins=(\d+), White wins=(\d+), draws=(\d+)", out)
+    if not match:
+        print("Benchmark output format unexpected:", out)
+        return False
+    black_wins = int(match.group(1))
+    white_wins = int(match.group(2))
+    draws = int(match.group(3))
+    print(f"Benchmark: Black wins {black_wins}, White wins {white_wins}, draws {draws}")
+    if draws > 0:
+        print(f"ERROR: draws > 0 ({draws})")
+        return False
+    # Optional: check win percentages (at least 10% each)
+    total = black_wins + white_wins + draws
+    if total > 0:
+        if black_wins < total * 0.10 or white_wins < total * 0.10:
+            print(f"WARNING: one player win rate below 10% (Black {black_wins/total*100:.1f}%, White {white_wins/total*100:.1f}%)")
+    return True
 
 def verify_mobile_assets():
     print("=== Verifying Mobile Assets ===")

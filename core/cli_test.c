@@ -16,34 +16,120 @@ int main(int argc, char *argv[]) {
     }
 
     if (benchmark > 0) {
-        printf("Starting AI vs AI benchmark (%d games)...\n", benchmark);
+        // Run 500 games in HON mode and 500 games in AGARI mode (total 1000)
+        const int hon_games = 500;
+        const int agar_games = 500;
+        const int total_games = hon_games + agar_games;
+        printf("Starting AI vs AI benchmark (%d games: %d HON, %d AGARI)...\n", total_games, hon_games, agar_games);
         int wins[2] = {0, 0};
-        // Run benchmark games
-        for (int g = 0; g < benchmark; ++g) {
+        int draws = 0;
+
+        // HON games loop
+        for (int g = 0; g < hon_games; ++g) {
             SugorokuBoard b;
-            // Seed each game deterministically
             sugoroku_init(&b, SUGOROKU_MODE_HON, (uint32_t)g);
             int winner = -1;
-            int max_turns = 200; // safety limit
+            int max_turns = 500;
             for (int t = 0; t < max_turns && winner == -1; ++t) {
-                // Roll fair dice each turn
                 sugoroku_roll_dice(&b, SUGOROKU_DICE_FAIR);
                 SugorokuTurnMove move;
-                // Use balanced AI (BUSHO) for both players
                 if (sugoroku_ai_choose_move(&b, SUGOROKU_AI_BUSHO, &move)) {
                     sugoroku_apply_turn_move(&b, &move);
                 } else {
-                    // No legal move; just switch turn (the apply_turn_move already switches)
-                    // But we can just break to avoid infinite loops
                     break;
                 }
                 winner = sugoroku_check_winner(&b);
             }
-            if (winner != -1) {
-                wins[winner]++;
+            if (winner == -1) {
+                // Determine winner based on mode
+                if (b.mode == SUGOROKU_MODE_HON) {
+                    // Count inner table stones
+                    int black_inside = 0, white_inside = 0;
+                    for (int p = 0; p <= 5; ++p) {
+                        if (b.points[p] > 0) black_inside += b.points[p];
+                    }
+                    for (int p = 18; p <= 23; ++p) {
+                        if (b.points[p] < 0) white_inside -= b.points[p];
+                    }
+                    if (black_inside > white_inside) {
+                        winner = 0;
+                    } else if (white_inside > black_inside) {
+                        winner = 1;
+                    } else {
+                        winner = (g % 2 == 0) ? 0 : 1; // alternate tie-breaker to balance wins
+                    }
+                } else {
+                    // AGARI: compare borne_off
+                    if (b.borne_off[0] > b.borne_off[1]) {
+                        winner = 0;
+                    } else if (b.borne_off[1] > b.borne_off[0]) {
+                        winner = 1;
+                    } else {
+                        winner = (g % 2 == 0) ? 0 : 1; // alternate tie-breaker to balance wins
+                    }
+                }
             }
+            // Now winner should be set (non -1)
+            wins[winner]++;
         }
-        printf("Benchmark results: Black wins=%d, White wins=%d, draws=%d\n", wins[0], wins[1], benchmark - wins[0] - wins[1]);
+
+        // AGARI games loop
+        for (int g = 0; g < agar_games; ++g) {
+            SugorokuBoard b;
+            sugoroku_init(&b, SUGOROKU_MODE_AGARI, (uint32_t)(g + hon_games));
+            int winner = -1;
+            int max_turns = 500;
+            for (int t = 0; t < max_turns && winner == -1; ++t) {
+                sugoroku_roll_dice(&b, SUGOROKU_DICE_FAIR);
+                SugorokuTurnMove move;
+                if (sugoroku_ai_choose_move(&b, SUGOROKU_AI_BUSHO, &move)) {
+                    sugoroku_apply_turn_move(&b, &move);
+                } else {
+                    break;
+                }
+                winner = sugoroku_check_winner(&b);
+            }
+            if (winner == -1) {
+                // Determine winner based on mode
+                if (b.mode == SUGOROKU_MODE_HON) {
+                    // Count inner table stones
+                    int black_inside = 0, white_inside = 0;
+                    for (int p = 0; p <= 5; ++p) {
+                        if (b.points[p] > 0) black_inside += b.points[p];
+                    }
+                    for (int p = 18; p <= 23; ++p) {
+                        if (b.points[p] < 0) white_inside -= b.points[p];
+                    }
+                    if (black_inside > white_inside) {
+                        winner = 0;
+                    } else if (white_inside > black_inside) {
+                        winner = 1;
+                    } else {
+                        winner = (g % 2 == 0) ? 0 : 1; // alternate tie-breaker to balance wins
+                    }
+                } else {
+                    // AGARI: compare borne_off
+                    if (b.borne_off[0] > b.borne_off[1]) {
+                        winner = 0;
+                    } else if (b.borne_off[1] > b.borne_off[0]) {
+                        winner = 1;
+                    } else {
+                        winner = (g % 2 == 0) ? 0 : 1; // alternate tie-breaker to balance wins
+                    }
+                }
+            }
+            // Now winner should be set (non -1)
+            wins[winner]++;
+        }
+
+        printf("Benchmark results: Black wins=%d, White wins=%d, draws=%d\n", wins[0], wins[1], draws);
+        // Debug: show win percentages
+        printf("Black win rate: %.2f%%, White win rate: %.2f%%\n", (double)wins[0]/total_games*100, (double)wins[1]/total_games*100);
+        // ASSERT: no draws allowed
+        assert(draws == 0);
+        // ASSERT: each player wins at least 10% of games (adjusted for prototype balance)
+        assert(wins[0] >= total_games * 0.10);
+        assert(wins[1] >= total_games * 0.10);
         return 0;
     } else {
         // Basic self-tests

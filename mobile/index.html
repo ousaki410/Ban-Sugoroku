@@ -3,40 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>盤双六 (Ban-Sugoroku)</title>
+    <title>盤双六</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
-    <!-- iOS home screen icon meta tags -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="盤双六">
-    <!-- Add icons for iOS -->
-    <link rel="apple-touch-icon" href="icon-144.png">
 </head>
 <body>
-    <h1>盤双六 (Ban-Sugoroku)</h1>
-    <div id="status-bar">Turn: <span id="turn-display">Black</span> | Coins: <span id="coins-display">1000 / 1000</span></div>
-    <div id="game-container">
-        <canvas id="board-canvas"></canvas>
-        <!-- Overlay for piece selection and move highlights -->
-        <canvas id="overlay-canvas"></canvas>
-    </div>
-    <div class="dice-container">
-        <div class="dice" id="dice1">?</div>
-        <div class="dice" id="dice2">?</div>
-    </div>
-    <div id="controls">
-        <button class="button" id="roll-button">Roll Dice (Space)</button>
-        <button class="button" id="pass-button" disabled>Pass Turn</button>
-    </div>
-    <div id="message-modal" class="modal hidden">
-        <div class="modal-content">
-            <h2 id="modal-title">Game Over</h2>
-            <p id="modal-message"></p>
-            <button class="button" id="modal-replay">Play Again</button>
-        </div>
-    </div>
-
+    <canvas id="game-canvas"></canvas>
     <script src="app.js"></script>
 </body>
 </html>
