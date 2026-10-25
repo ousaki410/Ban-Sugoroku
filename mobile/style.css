@@ -1,23 +1,13 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-tap-highlight-color: transparent;
-}
-
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
 html, body {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #0a0604;
-    font-family: 'Noto Serif JP', 'Yu Mincho', 'Hiragino Mincho Pro', serif;
+  width: 100%; height: 100%; overflow: hidden;
+  background: #090503;
+  font-family: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
 }
-
 canvas {
-    display: block;
-    width: 100vw;
-    height: 100vh;
-    cursor: pointer;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  cursor: default;
+  touch-action: none;
 }
