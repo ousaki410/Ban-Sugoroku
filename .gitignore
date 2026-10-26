@@ -1,0 +1,13 @@
+# Build artifacts.
+# NOTE: files already tracked in Git stay tracked after adding these rules.
+# Untracking them requires an explicit `git rm --cached` decision.
+build/
+*.o
+*.a
+
+# Node (no dependencies are currently used, but avoid accidental commits)
+node_modules/
+
+# Python cache
+__pycache__/
+*.pyc

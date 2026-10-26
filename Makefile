@@ -1,7 +1,7 @@
 # Convenience wrapper for C core + web build + tests
 
-# Determine build directory
-BUILD_DIR = build
+# Determine build directory (override to keep verification out of ./build)
+BUILD_DIR ?= build
 
 # Default target: build core library and CLI test
 all: $(BUILD_DIR)/libsugoroku.a $(BUILD_DIR)/cli_test
@@ -19,10 +19,12 @@ $(BUILD_DIR)/libsugoroku.a: core/sugoroku.c $(BUILD_DIR)
 $(BUILD_DIR)/cli_test: core/cli_test.c $(BUILD_DIR)/libsugoroku.a $(BUILD_DIR)
 	gcc -std=c11 -O2 -Wall -Wextra -Werror $< -L$(BUILD_DIR) -lsugoroku -o $@
 
-# Run tests
+# Run both C test paths: basic self-tests and the forced-winner benchmark
 test: $(BUILD_DIR)/cli_test
-	@echo "Running CLI tests..."
+	@echo "Running CLI self-tests..."
 	@$(BUILD_DIR)/cli_test
+	@echo "Running CLI benchmark..."
+	@$(BUILD_DIR)/cli_test --benchmark
 
 # Clean build artifacts
 clean:

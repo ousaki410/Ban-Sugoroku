@@ -1,0 +1,7 @@
+{
+  "name": "ban-sugoroku",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser ES modules for the Ban-Sugoroku mobile client"
+}
