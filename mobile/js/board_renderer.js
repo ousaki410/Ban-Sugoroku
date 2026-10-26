@@ -3,7 +3,7 @@ import { canvas, ctx, W, H, scale, offsetX, offsetY, FONT_BRUSH, FONT_MINCHO, NE
 import { SugorokuCore } from './core.js';
 import { renderEraSelectScreen, renderColorSelectModal, renderSettlementOverlay } from './ui_screens.js';
 
-function render() {
+export function render() {
     ctx.save();
     ctx.fillStyle = '#090503';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
