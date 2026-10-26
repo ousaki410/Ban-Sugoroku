@@ -7,7 +7,8 @@ Performs the following checks:
 3. Validates mobile asset existence and HTML syntax (basic checks)
 4. Syntax-checks each mobile ES module with `node --check`
 5. Runs an ES-module import smoke test for eras.js and core.js
-6. Reports any failures.
+6. Runs deterministic JS rules/AI regression tests
+7. Reports any failures.
 
 By default, C tests are compiled from current source into a fresh temporary
 directory that is removed afterwards; the tracked ./build directory is never
@@ -226,9 +227,33 @@ def verify_mobile_js_imports():
     print("Mobile JS import smoke test passed.")
     return True
 
+def verify_mobile_js_rules():
+    """Run deterministic JS rules/AI regression tests."""
+    print("=== Verifying Mobile JS Rules ===")
+    node = shutil.which("node")
+    if node is None:
+        print("node not found; skipping JS rules tests.")
+        return True
+    script = TOOLS_DIR / "test_js_rules.mjs"
+    if not script.exists():
+        print(f"JS rules test script not found: {script.relative_to(PROJECT_ROOT)}")
+        return False
+    cmd = f"{shlex.quote(node)} {shlex.quote(str(script))}"
+    ok, out, err = run_cmd(cmd, cwd=PROJECT_ROOT)
+    if out.strip():
+        print(out.strip())
+    if err.strip():
+        print(err.strip())
+    if not ok:
+        print("JS rules regression tests failed.")
+        return False
+    print("Mobile JS rules tests passed.")
+    return True
+
 def main():
     # Ensure we are in project root
     os.chdir(PROJECT_ROOT)
+    node_present = shutil.which("node") is not None
     success = True
     # Run C tests
     if not verify_c_tests():
@@ -242,8 +267,18 @@ def main():
     # Verify ES-module named imports resolve
     if not verify_mobile_js_imports():
         success = False
+    # Run deterministic JS rules/AI regression tests
+    if not verify_mobile_js_rules():
+        success = False
     if success:
-        print("\nAll verification checks passed!")
+        if node_present:
+            print("\nAll verification checks passed!")
+        else:
+            print("\nAll non-JavaScript verification checks passed.")
+            print(
+                "JavaScript syntax, import, and rules checks were skipped "
+                "because node was not found."
+            )
         sys.exit(0)
     else:
         print("\nSome verification checks failed.")

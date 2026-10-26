@@ -177,7 +177,7 @@ export const SugorokuCore = {
                 for (let h = i + 1; h <= 5; h++) if (pts[h] > 0) higherHasStone = true;
                 if (to === -1 || !higherHasStone) {
                   const k = `${i}->off:${die}`;
-                  if (!seen.has(k)) { seen.add(k); steps.push({ from: i, to, die, dIdx }); }
+                  if (!seen.has(k)) { seen.add(k); steps.push({ from: i, to: 'off', die, dIdx }); }
                 }
               }
             } else {
@@ -192,7 +192,7 @@ export const SugorokuCore = {
                 for (let l = 18; l < i; l++) if (pts[l] < 0) lowerHasStone = true;
                 if (to === 24 || !lowerHasStone) {
                   const k = `${i}->off:${die}`;
-                  if (!seen.has(k)) { seen.add(k); steps.push({ from: i, to, die, dIdx }); }
+                  if (!seen.has(k)) { seen.add(k); steps.push({ from: i, to: 'off', die, dIdx }); }
                 }
               }
             }
