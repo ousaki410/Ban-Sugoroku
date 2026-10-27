@@ -21,6 +21,10 @@ target_include_directories(sugoroku PUBLIC
 add_executable(cli_test core/cli_test.c)
 target_link_libraries(cli_test sugoroku)
 
+# C11 rules regression test executable
+add_executable(test_rules core/test_rules.c)
+target_link_libraries(test_rules sugoroku)
+
 # Installation targets
 install(TARGETS sugoroku
     ARCHIVE DESTINATION lib
@@ -46,5 +50,9 @@ endif()
 enable_testing()
 add_test(NAME cli_test
     COMMAND cli_test
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+add_test(NAME test_rules
+    COMMAND test_rules
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )

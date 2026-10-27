@@ -4,11 +4,12 @@ Verification script for Ban-Sugoroku project.
 Performs the following checks:
 1. Runs C core unit tests (cli_test)
 2. Runs the forced-winner CLI benchmark
-3. Validates mobile asset existence and HTML syntax (basic checks)
-4. Syntax-checks each mobile ES module with `node --check`
-5. Runs an ES-module import smoke test for eras.js and core.js
-6. Runs deterministic JS rules/AI regression tests
-7. Reports any failures.
+3. Runs the C11 rules regression tests (test_rules)
+4. Validates mobile asset existence and HTML syntax (basic checks)
+5. Syntax-checks each mobile ES module with `node --check`
+6. Runs an ES-module import smoke test for eras.js and core.js
+7. Runs deterministic JS rules/AI regression tests
+8. Reports any failures.
 
 By default, C tests are compiled from current source into a fresh temporary
 directory that is removed afterwards; the tracked ./build directory is never
@@ -122,6 +123,24 @@ def verify_c_tests():
         if total > 0:
             if black_wins < total * 0.10 or white_wins < total * 0.10:
                 print(f"WARNING: one player win rate below 10% (Black {black_wins/total*100:.1f}%, White {white_wins/total*100:.1f}%)")
+
+        # Run the C11 rules regression suite after the existing basic test and
+        # benchmark, so a rule failure does not prevent those checks from
+        # running. A non-zero exit is a test failure, not an infrastructure
+        # failure; print the binary's diagnostics before returning.
+        rules_test_path = build_dir / "test_rules"
+        if not rules_test_path.exists():
+            print(f"test_rules not found in {build_dir} after build.")
+            return False
+        ok, out, err = run_cmd(str(rules_test_path), cwd=build_dir)
+        if out.strip():
+            print(out.strip())
+        if err.strip():
+            print(err.strip())
+        if not ok:
+            print("C rules regression tests failed.")
+            return False
+        print("C rules regression tests passed.")
         return True
     except Exception as e:
         print(f"C verification error: {e}")

@@ -3,8 +3,8 @@
 # Determine build directory (override to keep verification out of ./build)
 BUILD_DIR ?= build
 
-# Default target: build core library and CLI test
-all: $(BUILD_DIR)/libsugoroku.a $(BUILD_DIR)/cli_test
+# Default target: build core library, CLI test, and C rules regression test
+all: $(BUILD_DIR)/libsugoroku.a $(BUILD_DIR)/cli_test $(BUILD_DIR)/test_rules
 
 # Create build directory
 $(BUILD_DIR):
@@ -19,12 +19,20 @@ $(BUILD_DIR)/libsugoroku.a: core/sugoroku.c $(BUILD_DIR)
 $(BUILD_DIR)/cli_test: core/cli_test.c $(BUILD_DIR)/libsugoroku.a $(BUILD_DIR)
 	gcc -std=c11 -O2 -Wall -Wextra -Werror $< -L$(BUILD_DIR) -lsugoroku -o $@
 
-# Run both C test paths: basic self-tests and the forced-winner benchmark
-test: $(BUILD_DIR)/cli_test
+# Compile C11 rules regression tests
+$(BUILD_DIR)/test_rules: core/test_rules.c $(BUILD_DIR)/libsugoroku.a $(BUILD_DIR)
+	gcc -std=c11 -O2 -Wall -Wextra -Werror $< -L$(BUILD_DIR) -lsugoroku -o $@
+
+# Run the existing C paths first, then the rules regression suite. Keeping the
+# new suite last lets the basic tests and benchmark run even when rule tests
+# intentionally expose a defect.
+test: $(BUILD_DIR)/cli_test $(BUILD_DIR)/test_rules
 	@echo "Running CLI self-tests..."
 	@$(BUILD_DIR)/cli_test
 	@echo "Running CLI benchmark..."
 	@$(BUILD_DIR)/cli_test --benchmark
+	@echo "Running C rules regression tests..."
+	@$(BUILD_DIR)/test_rules
 
 # Clean build artifacts
 clean:

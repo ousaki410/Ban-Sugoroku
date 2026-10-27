@@ -17,6 +17,31 @@ static uint32_t rand_next(SugorokuBoard *b) {
     return b->rng_state;
 }
 
+static inline int player_sign(uint8_t player) {
+    return (player == 0) ? 1 : -1;
+}
+
+static inline bool is_own_stone(int8_t value, int own_sign) {
+    return (value > 0 && own_sign > 0) || (value < 0 && own_sign < 0);
+}
+
+/*
+ * A point is a legal destination when it is empty or holds exactly one
+ * opposing stone. Stacks of either colour block the point.
+ */
+static bool can_land_on_point(const SugorokuBoard *b, int dest, int opp_sign, bool *hits_blot) {
+    int8_t value = b->points[dest];
+    if (value == 0) {
+        *hits_blot = false;
+        return true;
+    }
+    if (value == opp_sign) {
+        *hits_blot = true;
+        return true;
+    }
+    return false;
+}
+
 /* Return a Japanese callout for a dice pair */
 const char *sugoroku_dice_callout(uint8_t d1, uint8_t d2) {
     static const char *callouts[21] = {
@@ -39,11 +64,11 @@ const char *sugoroku_dice_callout(uint8_t d1, uint8_t d2) {
 }
 
 static bool all_stones_inside(const SugorokuBoard *b, uint8_t player) {
-    int own_sign = (player == 0) ? 1 : -1;
+    int own_sign = player_sign(player);
     int low = (player == 0) ? 0 : 18;
     int high = (player == 0) ? 5 : 23;
     for (int p = 0; p < SUGOROKU_POINTS; ++p) {
-        if (b->points[p] == own_sign) {
+        if (is_own_stone(b->points[p], own_sign)) {
             if (p < low || p > high) return false;
         }
     }
@@ -51,14 +76,14 @@ static bool all_stones_inside(const SugorokuBoard *b, uint8_t player) {
 }
 
 static bool has_higher_stone(const SugorokuBoard *b, uint8_t player, int p) {
-    int own_sign = (player == 0) ? 1 : -1;
+    int own_sign = player_sign(player);
     if (player == 0) {
         for (int q = p + 1; q <= 5; ++q) {
-            if (b->points[q] == own_sign) return true;
+            if (is_own_stone(b->points[q], own_sign)) return true;
         }
     } else {
         for (int q = 18; q < p; ++q) {
-            if (b->points[q] == own_sign) return true;
+            if (is_own_stone(b->points[q], own_sign)) return true;
         }
     }
     return false;
@@ -118,7 +143,7 @@ void sugoroku_roll_dice(SugorokuBoard *b, SugorokuDiceType dice_type) {
  */
 size_t sugoroku_generate_turn_moves(const SugorokuBoard *b, SugorokuTurnMove *out_moves, size_t max_moves) {
     if (max_moves == 0) return 0;
-    int own_sign = (b->turn == 0) ? 1 : -1;
+    int own_sign = player_sign(b->turn);
     int opp_sign = -own_sign;
     size_t move_count = 0;
 
@@ -139,14 +164,17 @@ size_t sugoroku_generate_turn_moves(const SugorokuBoard *b, SugorokuTurnMove *ou
             if (b->bar[b->turn] > 0) {
                 int dest = (b->turn == 0) ? (24 - die) : (die - 1);
                 if (dest >= 0 && dest < SUGOROKU_POINTS) {
-                    SugorokuTurnMove tm;
-                    memset(&tm, 0, sizeof(tm));
-                    tm.steps[0].from = 24;
-                    tm.steps[0].to = (int8_t)dest;
-                    tm.steps[0].die_used = die;
-                    tm.steps[0].hits_blot = false;
-                    tm.step_count = 1;
-                    out_moves[move_count++] = tm;
+                    bool hit = false;
+                    if (can_land_on_point(b, dest, opp_sign, &hit)) {
+                        SugorokuTurnMove tm;
+                        memset(&tm, 0, sizeof(tm));
+                        tm.steps[0].from = 24;
+                        tm.steps[0].to = (int8_t)dest;
+                        tm.steps[0].die_used = die;
+                        tm.steps[0].hits_blot = hit;
+                        tm.step_count = 1;
+                        out_moves[move_count++] = tm;
+                    }
                 }
                 continue;
             }
@@ -154,7 +182,7 @@ size_t sugoroku_generate_turn_moves(const SugorokuBoard *b, SugorokuTurnMove *ou
             /* Normal moves from every point */
             for (int p = 0; p < SUGOROKU_POINTS; ++p) {
                 if (move_count >= max_moves) break;
-                if (b->points[p] != own_sign) continue;
+                if (!is_own_stone(b->points[p], own_sign)) continue;
 
                 int delta = (b->turn == 0) ? -die : die;
                 int dest = p + delta;
@@ -169,18 +197,8 @@ size_t sugoroku_generate_turn_moves(const SugorokuBoard *b, SugorokuTurnMove *ou
                     dest = (b->turn == 0) ? -1 : 24;
                     can_move = true;
                 } else {
-                    if (b->points[dest] == 0) {
-                        can_move = true;
-                    } else if (b->points[dest] == opp_sign) {
-                        if (abs(b->points[dest]) == 1) {
-                            can_move = true;
-                            hit = true;
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
+                    if (!can_land_on_point(b, dest, opp_sign, &hit)) continue;
+                    can_move = true;
                 }
                 if (!can_move) continue;
 
@@ -201,26 +219,25 @@ size_t sugoroku_generate_turn_moves(const SugorokuBoard *b, SugorokuTurnMove *ou
 void sugoroku_apply_turn_move(SugorokuBoard *b, const SugorokuTurnMove *move) {
     for (int s = 0; s < move->step_count; ++s) {
         const SugorokuStep *step = &move->steps[s];
-        int own_sign = (b->turn == 0) ? 1 : -1;
+        int own_sign = player_sign(b->turn);
         int opp_sign = -own_sign;
 
         if (step->from >= 0 && step->from < SUGOROKU_POINTS) {
-            if (b->points[step->from] == own_sign) b->points[step->from] -= (int8_t)own_sign;
+            if (is_own_stone(b->points[step->from], own_sign)) {
+                b->points[step->from] -= (int8_t)own_sign;
+            }
         } else if (step->from == 24) {
             if (b->bar[b->turn] > 0) b->bar[b->turn]--;
         }
 
         if (step->to >= 0 && step->to < SUGOROKU_POINTS) {
-            b->points[step->to] += (int8_t)own_sign;
-        } else if (step->to == -1 || step->to == 24) {
-            b->borne_off[b->turn]++;
-        }
-
-        if (step->hits_blot && step->to >= 0 && step->to < SUGOROKU_POINTS) {
-            if (b->points[step->to] == opp_sign) {
+            if (step->hits_blot && b->points[step->to] == opp_sign) {
                 b->bar[1 - b->turn]++;
                 b->points[step->to] = 0;
             }
+            b->points[step->to] += (int8_t)own_sign;
+        } else if (step->to == -1 || step->to == 24) {
+            b->borne_off[b->turn]++;
         }
     }
     b->turn = (uint8_t)(1 - b->turn);
