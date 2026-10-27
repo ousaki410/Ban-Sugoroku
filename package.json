@@ -3,5 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Browser ES modules for the Ban-Sugoroku mobile client"
+  "description": "Browser ES modules for the Ban-Sugoroku mobile client",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
