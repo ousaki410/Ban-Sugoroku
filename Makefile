@@ -38,9 +38,15 @@ test: $(BUILD_DIR)/cli_test $(BUILD_DIR)/test_rules
 clean:
 	rm -rf $(BUILD_DIR)
 
+# Run the opt-in headless browser gameplay E2E suite. This is intentionally
+# separate from `make test` so the normal C-only loop stays lightweight.
+test-browser:
+	@echo "Running browser gameplay E2E tests..."
+	python3 tools/test_browser_e2e.py
+
 # Start mobile app HTTP server
 mobile:
 	@echo "Starting mobile HTTP server..."
 	python3 -m http.server 8080 --bind 0.0.0.0
 
-.PHONY: all test clean mobile
+.PHONY: all test test-browser clean mobile

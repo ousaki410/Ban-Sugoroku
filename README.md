@@ -18,7 +18,8 @@ Ban-Sugoroku/
 │   ├── style.css               # Authentic medieval Japanese Zashiki aesthetic (black/gold maki-e, wood grain)
 │   └── manifest.json           # PWA manifest for "Add to Home Screen" on iOS/Android
 ├── tools/
-│   ├── verify_all.py           # Runs C unit tests + headless simulation + verifies mobile assets
+│   ├── verify_all.py           # Runs C/JS checks; --browser adds browser gameplay E2E
+│   ├── test_browser_e2e.py     # Headless Chromium canvas gameplay smoke/regression suite
 │   └── export_warband_ms.py    # Generates Mount & Blade: Warband module_presentations/scripts snippet
 └── README.md
 ```
@@ -81,12 +82,53 @@ Runs a full verification suite:
 
 1. Builds and runs the C core unit tests.
 2. Checks that the mobile assets exist and the HTML / manifest are syntactically valid.
+3. Runs the C and JavaScript rules regression suites.
+4. With `--browser`, runs the headless browser gameplay E2E suite.
 
 Run with:
 
 ```bash
 python3 tools/verify_all.py
 ```
+
+The default run is lightweight and skips the browser suite. To include it:
+
+```bash
+python3 tools/verify_all.py --browser
+```
+
+### Browser gameplay E2E tests
+
+`tools/test_browser_e2e.py` drives the real canvas UI in headless Chromium. It
+uses a local HTTP server and real pointer events to start a game, roll dice,
+move stones, capture, enter from the bar, and complete bear-off for both colors.
+It also checks JavaScript errors and stone-count invariants.
+
+Prerequisites:
+
+- Python 3
+- Selenium 4.x
+- Chromium and a matching ChromeDriver
+
+No npm packages or browser downloads are used.
+
+Run all scenarios:
+
+```bash
+make test-browser
+# or
+python3 tools/test_browser_e2e.py
+```
+
+Run one scenario or list them:
+
+```bash
+python3 tools/test_browser_e2e.py --scenario capture_black
+python3 tools/test_browser_e2e.py --list
+```
+
+On failure, screenshots and state dumps are written under
+`/tmp/opencode/bsg-browser-artifacts/`.
 
 ### `tools/export_warband_ms.py`
 

@@ -9,7 +9,8 @@ Performs the following checks:
 5. Syntax-checks each mobile ES module with `node --check`
 6. Runs an ES-module import smoke test for eras.js and core.js
 7. Runs deterministic JS rules/AI regression tests
-8. Reports any failures.
+8. Optionally runs the headless browser gameplay E2E suite with --browser
+9. Reports any failures.
 
 By default, C tests are compiled from current source into a fresh temporary
 directory that is removed afterwards; the tracked ./build directory is never
@@ -18,6 +19,7 @@ directory instead (it is left in place, and its existing contents are not
 deleted).
 """
 
+import argparse
 import os
 import sys
 import subprocess
@@ -269,7 +271,46 @@ def verify_mobile_js_rules():
     print("Mobile JS rules tests passed.")
     return True
 
+def verify_browser_e2e():
+    """Run the opt-in headless browser gameplay E2E suite."""
+    print("=== Verifying Browser Gameplay E2E ===")
+    script = TOOLS_DIR / "test_browser_e2e.py"
+    if not script.exists():
+        print(
+            "Browser E2E script not found: "
+            f"{script.relative_to(PROJECT_ROOT)}"
+        )
+        return False
+    cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(script))}"
+    ok, out, err = run_cmd(cmd, cwd=PROJECT_ROOT)
+    if out.strip():
+        print(out.strip())
+    if err.strip():
+        print(err.strip())
+    if not ok:
+        print("Browser gameplay E2E tests failed.")
+        return False
+    print("Browser gameplay E2E tests passed.")
+    return True
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Run Ban-Sugoroku verification checks."
+    )
+    parser.add_argument(
+        "--browser",
+        action="store_true",
+        help=(
+            "Run the opt-in headless browser gameplay E2E suite. "
+            "Default verification skips it to stay lightweight."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
 def main():
+    args = parse_args()
     # Ensure we are in project root
     os.chdir(PROJECT_ROOT)
     node_present = shutil.which("node") is not None
@@ -289,6 +330,13 @@ def main():
     # Run deterministic JS rules/AI regression tests
     if not verify_mobile_js_rules():
         success = False
+    # Browser E2E is opt-in so default verification stays lightweight.
+    if args.browser:
+        if not verify_browser_e2e():
+            success = False
+    else:
+        print("=== Verifying Browser Gameplay E2E ===")
+        print("Browser E2E skipped by default; pass --browser to run it.")
     if success:
         if node_present:
             print("\nAll verification checks passed!")
