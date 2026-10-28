@@ -210,7 +210,7 @@ export const SugorokuCore = {
         from: st.from,
         to: st.to,
         die: st.die,
-        label: st.to === 'off' ? `上がり${KANJI[st.die]}` : (st.isLeap ? `蛙飛${KANJI[st.die]}` : `${KANJI[st.die]}目`),
+        label: st.to === 'off' ? `上がり${KANJI[st.die]}` : (st.isLeap ? `絵合飛${KANJI[st.die]}` : `${KANJI[st.die]}目`),
         isFar: idx > 0,
         isCombined: false,
         steps: [st]

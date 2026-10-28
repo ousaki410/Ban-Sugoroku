@@ -3,6 +3,247 @@ import { canvas, ctx, W, H, scale, offsetX, offsetY, FONT_BRUSH, FONT_MINCHO, NE
 import { SugorokuCore } from './core.js';
 import { renderEraSelectScreen, renderColorSelectModal, renderSettlementOverlay } from './ui_screens.js';
 
+
+  const GENJI_CHAPTERS = [
+    '桐壺', '帚木', '空蝉', '夕顔', '若紫', '末摘花',
+    '紅葉賀', '花宴', '葵', '賢木', '花散里', '須磨',
+    '明石', '澪標', '蓬生', '関屋', '絵合', '松風',
+    '薄雲', '朝顔', '乙女', '玉鬘', '初音', '胡蝶'
+  ];
+
+  const UKIYOE_PALETTE = ['#5383a6', '#e8b954', '#e09879', '#b8b6a8', '#e8b954', '#5383a6'];
+
+  function drawTanzakuMotif(ctx, x, y, w, h, idx, isTop) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x + 1, y + 1, w - 2, h - 2);
+    ctx.clip();
+
+    const kind = idx % 4;
+    // Classic Edo miniature landscape motifs inside each tanzaku
+    if (kind === 0) {
+      // Pine branch & needles (黒松)
+      ctx.strokeStyle = 'rgba(32, 28, 22, 0.55)';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(x + 4, y + h * 0.65);
+      ctx.quadraticCurveTo(x + w * 0.55, y + h * 0.48, x + w - 6, y + h * 0.58);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(42, 78, 52, 0.62)';
+      for (let k = 0; k < 3; k++) {
+        ctx.beginPath();
+        ctx.arc(x + 16 + k * 16, y + h * 0.52 - (k % 2) * 8, 9, Math.PI, 0);
+        ctx.fill();
+      }
+    } else if (kind === 1) {
+      // Waves & full moon (波に満月)
+      ctx.fillStyle = 'rgba(248, 236, 205, 0.72)';
+      ctx.beginPath();
+      ctx.arc(x + w * 0.35, y + h * 0.35, 8.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(36, 68, 102, 0.55)';
+      ctx.lineWidth = 1.5;
+      for (let r = 0; r < 3; r++) {
+        const wy = y + h * 0.68 + r * 8;
+        ctx.beginPath();
+        ctx.moveTo(x + 4, wy);
+        ctx.quadraticCurveTo(x + w * 0.5, wy - 5, x + w - 4, wy);
+        ctx.stroke();
+      }
+    } else if (kind === 2) {
+      // Autumn maple & cloud band (紅葉・霞)
+      ctx.fillStyle = 'rgba(182, 54, 38, 0.52)';
+      for (let m = 0; m < 5; m++) {
+        ctx.beginPath();
+        ctx.arc(x + 12 + (m * 13) % (w - 18), y + h * 0.42 + (m % 3) * 11, 4.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      // Folding fan & floral sprig (扇・草花)
+      ctx.fillStyle = 'rgba(242, 224, 176, 0.7)';
+      ctx.strokeStyle = 'rgba(60, 42, 26, 0.5)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.5, y + h * 0.64);
+      ctx.arc(x + w * 0.5, y + h * 0.64, 16, -Math.PI * 0.82, -Math.PI * 0.18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Vertical Genji Monogatari chapter name
+    const chName = GENJI_CHAPTERS[idx % 24];
+    ctx.fillStyle = 'rgba(26, 18, 12, 0.86)';
+    ctx.font = `600 12.5px ${FONT_BRUSH}`;
+    ctx.textAlign = 'center';
+    const textY = isTop ? (y + h - 34) : (y + 20);
+    for (let c = 0; c < chName.length; c++) {
+      ctx.fillText(chName[c], x + w / 2, textY + c * 13);
+    }
+    ctx.restore();
+  }
+
+  function renderUkiyoeSheetAndCourt(ctx, b, laneH, midTop, midBot) {
+    ctx.save();
+    // 1. Outer aged Hōsho-shi paper sheet margin covering the wooden frame
+    const padX = 24, padTop = 20, padBot = 26;
+    const sx = b.x - padX, sy = b.y - padTop;
+    const sw = b.w + padX * 2, sh = b.h + padTop + padBot;
+
+    const paperGrad = ctx.createLinearGradient(sx, sy, sx + sw, sy + sh);
+    paperGrad.addColorStop(0, '#efe4cc');
+    paperGrad.addColorStop(0.5, '#e8d9bc');
+    paperGrad.addColorStop(1, '#dfd0b0');
+    ctx.fillStyle = paperGrad;
+    ctx.fillRect(sx, sy, sw, sh);
+
+    // Subtle paper age spots & center fold crease
+    ctx.strokeStyle = 'rgba(120, 95, 65, 0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(b.x + b.w / 2, sy);
+    ctx.lineTo(b.x + b.w / 2, sy + sh);
+    ctx.stroke();
+
+    // Red woodblock collector seals (朱印) at top-center, center-bottom, right-margin
+    ctx.strokeStyle = 'rgba(196, 62, 42, 0.72)';
+    ctx.lineWidth = 1.6;
+    ctx.strokeRect(b.x + b.w / 2 - 28, sy + 3, 56, 15);
+    ctx.beginPath();
+    ctx.arc(b.x + b.w / 2, midBot + 2, 16, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeRect(sx + sw - 19, sy + sh - 68, 14, 48);
+
+    // Double sumi-ink outer border (墨枠)
+    ctx.strokeStyle = '#261e17';
+    ctx.lineWidth = 2.4;
+    ctx.strokeRect(b.x - 3, b.y - 3, b.w + 6, b.h + 6);
+    ctx.lineWidth = 1.0;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+
+    // 2. Top & Bottom 24 Ukiyo-e Tanzaku rectangular cells
+    const colW = b.w / 12;
+    for (let pt = 0; pt < 24; pt++) { if (mode.isOimawashi) break;
+      const g = getLaneGeom(pt);
+      const cellX = g.cx - colW / 2;
+      const cellY = g.isTop ? b.y : midBot;
+      const color = UKIYOE_PALETTE[(pt + (g.isTop ? 1 : 0)) % UKIYOE_PALETTE.length];
+
+      ctx.fillStyle = color;
+      ctx.fillRect(cellX, cellY, colW, laneH);
+
+      // Soft aged paper wash over pigment
+      const wash = ctx.createLinearGradient(cellX, cellY, cellX, cellY + laneH);
+      wash.addColorStop(0, 'rgba(255, 248, 232, 0.16)');
+      wash.addColorStop(0.5, 'rgba(255, 248, 232, 0.0)');
+      wash.addColorStop(1, 'rgba(40, 28, 16, 0.14)');
+      ctx.fillStyle = wash;
+      ctx.fillRect(cellX, cellY, colW, laneH);
+
+      drawTanzakuMotif(ctx, cellX, cellY, colW, laneH, pt, g.isTop);
+
+      ctx.strokeStyle = '#2a2119';
+      ctx.lineWidth = 1.35;
+      ctx.strokeRect(cellX, cellY, colW, laneH);
+    }
+
+    // 3. Left & Right flanking horizontal tanzaku strips in the middle band
+    const flankW = colW * 2;
+    const stripH = b.midH / 4;
+    for (let side = 0; side < 2; side++) {
+      const fx = side === 0 ? b.x : (b.x + b.w - flankW);
+      for (let r = 0; r < 4; r++) {
+        const fy = midTop + r * stripH;
+        ctx.fillStyle = UKIYOE_PALETTE[(r + side * 2) % UKIYOE_PALETTE.length];
+        ctx.fillRect(fx, fy, flankW, stripH);
+        ctx.strokeStyle = '#2a2119';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(fx, fy, flankW, stripH);
+
+        // Decorative pine/wave brush stroke inside horizontal strip
+        ctx.strokeStyle = 'rgba(35, 28, 20, 0.45)';
+        ctx.beginPath();
+        ctx.moveTo(fx + 10, fy + stripH * 0.55);
+        ctx.quadraticCurveTo(fx + flankW * 0.5, fy + stripH * 0.25, fx + flankW - 10, fy + stripH * 0.65);
+        ctx.stroke();
+      }
+    }
+
+    // 4. Central Panorama: "源氏繪合" (Genji E-awase) Golden Court Scene
+    const cx = b.x + flankW;
+    const cw = b.w - flankW * 2;
+    const cy = midTop;
+    const ch = b.midH;
+
+    const goldGrad = ctx.createLinearGradient(cx, cy, cx, cy + ch);
+    goldGrad.addColorStop(0, '#c99b42');
+    goldGrad.addColorStop(0.28, '#ebd082');
+    goldGrad.addColorStop(0.75, '#f2dc96');
+    goldGrad.addColorStop(1, '#d8b45c');
+    ctx.fillStyle = goldGrad;
+    ctx.fillRect(cx, cy, cw, ch);
+
+    // Left Misu (御簾 bamboo blind) & vermilion/green Kichō drapery
+    const drapeW = cw * 0.22;
+    ctx.fillStyle = '#c85a38';
+    ctx.beginPath();
+    ctx.moveTo(cx + 8, cy);
+    ctx.lineTo(cx + drapeW, cy);
+    ctx.lineTo(cx + drapeW + 24, cy + ch);
+    ctx.lineTo(cx + 8, cy + ch);
+    ctx.closePath();
+    ctx.fill();
+
+    // Malachite green trim stripes on the bamboo blind
+    ctx.fillStyle = '#3b6e52';
+    ctx.fillRect(cx + 18, cy, 8, ch);
+    ctx.fillRect(cx + drapeW - 10, cy, 7, ch);
+
+    // Stylized Ukiyo-e court robe motif & lacquer scroll stand in center
+    ctx.fillStyle = '#36587a';
+    ctx.beginPath();
+    ctx.moveTo(cx + cw * 0.42, cy + ch * 0.28);
+    ctx.quadraticCurveTo(cx + cw * 0.28, cy + ch * 0.85, cx + cw * 0.56, cy + ch * 0.92);
+    ctx.quadraticCurveTo(cx + cw * 0.54, cy + ch * 0.45, cx + cw * 0.42, cy + ch * 0.28);
+    ctx.fill();
+
+    ctx.fillStyle = '#b84632';
+    ctx.beginPath();
+    ctx.moveTo(cx + cw * 0.66, cy + ch * 0.36);
+    ctx.quadraticCurveTo(cx + cw * 0.58, cy + ch * 0.88, cx + cw * 0.75, cy + ch * 0.92);
+    ctx.closePath();
+    ctx.fill();
+
+    // Right white vertical title cartouche: 「源氏繪合」
+    const cartW = 54, cartH = ch - 12;
+    const cartX = cx + cw - cartW - 14, cartY = cy + 6;
+    ctx.fillStyle = '#f7f1e3';
+    ctx.fillRect(cartX, cartY, cartW, cartH);
+    ctx.strokeStyle = '#261e17';
+    ctx.lineWidth = 1.6;
+    ctx.strokeRect(cartX, cartY, cartW, cartH);
+
+    ctx.fillStyle = '#1d150e';
+    ctx.font = `800 24px ${FONT_BRUSH}`;
+    ctx.textAlign = 'center';
+    const titleChars = ['源', '氏', '繪', '合'];
+    for (let i = 0; i < titleChars.length; i++) {
+      ctx.fillText(titleChars[i], cartX + cartW / 2, cartY + 28 + i * 31);
+    }
+
+    // Subtle rule guide banner along top & bottom of central court
+    ctx.fillStyle = 'rgba(32, 18, 8, 0.78)';
+    ctx.font = `600 12.5px ${FONT_MINCHO}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('◄ 外周二十四帖廻り ── 黒乞い目 二・五 ／ 白乞い目 三・四 ／ 共通 一・六・重目 ►', cx + cw * 0.44, cy + 17);
+    ctx.fillText('殿駒の絵合飛びにて敵駒を追い抜き、六駒を中央御殿へ納めれば勝ち', cx + cw * 0.44, cy + ch - 8);
+
+    ctx.strokeStyle = '#261e17';
+    ctx.lineWidth = 2.0;
+    ctx.strokeRect(cx, cy, cw, ch);
+    ctx.restore();
+  }
+
 export function render() {
     ctx.save();
     ctx.fillStyle = '#090503';
@@ -534,8 +775,7 @@ export function render() {
     ctx.font = `600 13.5px ${FONT_MINCHO}`;
     ctx.textAlign = 'right';
     if (mode.isOimawashi) {
-      ctx.fillText('◄ 周回追撃 ── 黒乞い目 二・五 ／ 白乞い目 三・四', b.x + b.w - 14, midTop + 20);
-      ctx.fillText('共通飛び目 一・六・重目 ►', b.x + b.w - 14, midBot - 9);
+      renderUkiyoeSheetAndCourt(ctx, b, laneH, midTop, midBot);
     } else {
       ctx.fillText('▲ 白の内陣・奥一〜六', b.x + b.w - 14, midTop + 19);
       ctx.fillText('▼ 黒の内陣・手前一〜六', b.x + b.w - 14, midBot - 9);
@@ -894,7 +1134,7 @@ export function drawDimpledStone(x, y, r, player, canMove, isSelected) {
       bVal = `${KANJI[G.off[0]]}／${tot}`;
       wVal = `${KANJI[G.off[1]]}／${tot}`;
     } else if (mode.isOimawashi) {
-      bLabel = '黒・討取'; wLabel = '白・討取';
+      bLabel = '黒・絵合'; wLabel = '白・絵合';
       bVal = `${KANJI[G.off[0]]}／六`;
       wVal = `${KANJI[G.off[1]]}／六`;
     }
