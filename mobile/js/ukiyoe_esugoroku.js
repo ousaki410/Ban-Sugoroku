@@ -246,7 +246,7 @@ export function initEdoEsugorokuMatch() {
   EState.boostUsed = [false, false];
   EState.albumOpen = false;
   EState.lastEventText = '「振出し（日本橋）」より出陣！中央の「上り」へ一番乗りを目指せ';
-  if (G.eraIdx === 5 && G.phase === 'PLAY' && G.turn !== G.humanSide) {
+  if (G.eraIdx === 5 && isEsugorokuPlay() && G.turn !== G.humanSide) {
     setTimeout(() => triggerRoll(G.turn), 650);
   }
 }
@@ -281,6 +281,10 @@ const GRID_COORDS = [
 ];
 
 const SHEET = { x: 186, y: 38, w: 836, h: 612, gridX: 198, gridY: 50, gridW: 762, gridH: 588 };
+
+export function isEsugorokuPlay() {
+  return G.eraIdx === 5 && G.phase !== 'ERA_SELECT' && G.phase !== 'SIDE_SELECT' && G.phase !== 'SETTLEMENT';
+}
 
 export function getSquareRect(sqIdx) {
   const cw = SHEET.gridW / 6;
@@ -776,13 +780,13 @@ export function renderEdoEsugoroku() {
   EState._lastTime = now;
 
   if (EState._lastPhase !== G.phase) {
-    if (G.phase === 'PLAY') {
+    if (isEsugorokuPlay()) {
       initEdoEsugorokuMatch();
     }
     EState._lastPhase = G.phase;
   }
 
-  if (G.phase === 'PLAY') {
+  if (isEsugorokuPlay()) {
     G.diceRolling = false;
     G.animStone = null;
     updateEdoEsugoroku(dt);
@@ -862,7 +866,7 @@ export function renderEdoEsugoroku() {
       cx = r.cx + offset;
       cy = r.cy + 6;
     }
-    drawPlayerKoma(ctx, cx, cy, p, G.turn === p && G.phase === 'PLAY');
+    drawPlayerKoma(ctx, cx, cy, p, G.turn === p && isEsugorokuPlay());
   }
 
   ctx.fillStyle = 'rgba(20, 13, 8, 0.88)';
@@ -981,7 +985,7 @@ export function renderEdoEsugoroku() {
   ctx.font = `800 13px ${FONT_MINCHO}`;
   ctx.fillText(`出目：${KANJI[pipVal]}`, 1150, dy + ds + 24);
 
-  const canRoll = G.phase === 'PLAY' && G.turn === G.humanSide && !EState.rolling && !EState.stepAnim;
+  const canRoll = isEsugorokuPlay() && G.turn === G.humanSide && !EState.rolling && !EState.stepAnim;
   const shakeX = EState.holdingTube ? (Math.sin(Date.now() * 0.06) * 5) : 0;
   ctx.fillStyle = canRoll ? '#8c3b20' : '#3a2c22';
   ctx.fillRect(DICE_TUBE_RECT.x + shakeX, DICE_TUBE_RECT.y, DICE_TUBE_RECT.w, DICE_TUBE_RECT.h);
@@ -1065,13 +1069,13 @@ function advanceTurn() {
     const who = nextP === G.humanSide ? '貴殿' : '相手';
     showStamp('宿場泊まり', `${who}は一回休みにつき手番見送り`);
     EState.lastEventText = `${who}は「泊（一回休み）」につき、続けて${G.turn === G.humanSide ? '貴殿' : '相手'}の振り番！`;
-    if (G.turn !== G.humanSide && G.phase === 'PLAY') {
+    if (G.turn !== G.humanSide && isEsugorokuPlay()) {
       setTimeout(() => triggerRoll(G.turn), 700);
     }
     return;
   }
   G.turn = nextP;
-  if (G.turn !== G.humanSide && G.phase === 'PLAY') {
+  if (G.turn !== G.humanSide && isEsugorokuPlay()) {
     setTimeout(() => triggerRoll(G.turn), 650);
   }
 }
@@ -1171,7 +1175,7 @@ function applySquareArrival(player, sq, rolledDie) {
 
   if (card.ruleType === 'roll_again') {
     showStamp(`${card.name}`, '吉兆！賽をもう一振り');
-    if (player !== G.humanSide && G.phase === 'PLAY') {
+    if (player !== G.humanSide && isEsugorokuPlay()) {
       setTimeout(() => triggerRoll(player), 650);
     }
     return;
@@ -1184,7 +1188,7 @@ function applySquareArrival(player, sq, rolledDie) {
 }
 
 export function triggerRoll(player) {
-  if (EState.rolling || EState.stepAnim || G.phase !== 'PLAY') return;
+  if (EState.rolling || EState.stepAnim || !isEsugorokuPlay()) return;
   EState.rolling = true;
   EState.rollTimer = 0.38;
   playDiceBounce();
@@ -1313,7 +1317,7 @@ export function handleEdoEsugorokuPointerDown(bx, by) {
     }
   }
 
-  if (G.phase === 'PLAY' && G.turn === G.humanSide && !EState.rolling && !EState.stepAnim) {
+  if (isEsugorokuPlay() && G.turn === G.humanSide && !EState.rolling && !EState.stepAnim) {
     if (isInsideRect(bx, by, DICE_TUBE_RECT)) {
       EState.holdingTube = true;
       EState.holdPower = 0.2;
@@ -1337,7 +1341,7 @@ export function handleEdoEsugorokuPointerUp() {
 // ブラウザ環境でキャプチャフェーズのポインタイベントを自動登録
 if (typeof window !== 'undefined') {
   window.addEventListener('pointerdown', (e) => {
-    if (G.eraIdx !== 5 || G.phase !== 'PLAY') return;
+    if (G.eraIdx !== 5 || !isEsugorokuPlay()) return;
     const canvasEl = (ctx && ctx.canvas) || document.querySelector('canvas');
     if (!canvasEl) return;
     const rect = canvasEl.getBoundingClientRect();
@@ -1359,7 +1363,7 @@ if (typeof window !== 'undefined') {
   }, { capture: true });
 
   window.addEventListener('pointerup', (e) => {
-    if (G.eraIdx !== 5 || G.phase !== 'PLAY') return;
+    if (G.eraIdx !== 5 || !isEsugorokuPlay()) return;
     if (handleEdoEsugorokuPointerUp()) {
       e.stopImmediatePropagation();
     }

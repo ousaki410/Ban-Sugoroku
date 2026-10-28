@@ -5,13 +5,7 @@ import { SugorokuCore } from './core.js';
 import { renderEraSelectScreen, renderColorSelectModal, renderSettlementOverlay } from './ui_screens.js';
 
 export function render() {
-  if (G.eraIdx === 5 && (G.phase === 'PLAY' || G.phase === 'SETTLEMENT')) {
-    ctx.save();
-    renderEdoEsugoroku();
-    if (G.phase === 'SETTLEMENT') { renderSettlementOverlay(); }
-    ctx.restore();
-    return;
-  }
+  
     ctx.save();
     ctx.fillStyle = '#090503';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -22,7 +16,14 @@ export function render() {
     ctx.scale(scale, scale);
 
     if (G.screen === 'SELECT_ERA') {
-      renderEraSelectScreen();
+      if (G.eraIdx === 5 && G.phase !== 'ERA_SELECT') {
+      renderEdoEsugoroku();
+      if (G.phase === 'SIDE_SELECT') renderSideSelectOverlay();
+      if (G.phase === 'SETTLEMENT') renderSettlementOverlay();
+      ctx.restore();
+      return;
+    }
+    renderEraSelectScreen();
       ctx.restore();
       return;
     }
