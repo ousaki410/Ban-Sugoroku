@@ -1,9 +1,17 @@
+import { renderEdoEsugoroku } from './ukiyoe_esugoroku.js';
 import { KANJI } from './eras.js';
 import { canvas, ctx, W, H, scale, offsetX, offsetY, FONT_BRUSH, FONT_MINCHO, NEW_GAME_BTN, CHANGE_ERA_BTN, G, currentEra, B, getLaneGeom, getStoneSlotXY, getTargetSealXY, drawMakiEText } from './state.js';
 import { SugorokuCore } from './core.js';
 import { renderEraSelectScreen, renderColorSelectModal, renderSettlementOverlay } from './ui_screens.js';
 
 export function render() {
+  if (G.eraIdx === 5 && (G.phase === 'PLAY' || G.phase === 'SETTLEMENT')) {
+    ctx.save();
+    renderEdoEsugoroku();
+    if (G.phase === 'SETTLEMENT') { renderSettlementOverlay(); }
+    ctx.restore();
+    return;
+  }
     ctx.save();
     ctx.fillStyle = '#090503';
     ctx.fillRect(0, 0, canvas.width, canvas.height);

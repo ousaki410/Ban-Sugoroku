@@ -12,7 +12,6 @@ import {
 
 const STORAGE_KEY = 'ban_sugoroku_ukiyoe_cards_v1';
 
-// 論文（孫貞娥「幕末・明治の絵双六における文学の活用」）および実物絵双六に基づく二十四錦絵札
 export const UKIYOE_CARDS = [
   {
     id: 1, iroha: 'い', name: '百物語灯籠', sub: '日本橋・振出脇', cat: '名物',
@@ -184,24 +183,25 @@ export const UKIYOE_CARDS = [
   }
 ];
 
-// 永続化コレクション状態
 export const EState = {
-  pos: [0, 0],          // 0: 振出し, 1..24: 二十四錦絵駒, 25: 上り
-  skipTurns: [0, 0],    // 泊まり（一回休み）カウンタ
+  pos: [0, 0],
+  skipTurns: [0, 0],
   dieVal: 1,
   rolling: false,
   rollTimer: 0,
   holdingTube: false,
   holdPower: 0,
   rattleCooldown: 0,
-  stepAnim: null,       // { player, fromSq, toSq, t, duration, onComplete }
-  boostArmed: false,    // 英勇守り札「武威＋二」発動フラグ
+  stepAnim: null,
+  boostArmed: false,
   boostUsed: [false, false],
-  albumOpen: false,     // 浮世絵大図鑑モーダル開閉
-  selectedCardId: 1,    // 図鑑内で選択中のカードID
-  unlocked: new Set([1, 2, 8]), // 初期所持3枚（百物語灯籠・桃太郎・武蔵坊弁慶）
-  loadout: [8, 1, 2],   // 懐中守り札（最大3枚）
-  lastEventText: '右下の竹筒を長押しして賽を振り、「振出し」より出陣されたし'
+  albumOpen: false,
+  selectedCardId: 1,
+  unlocked: new Set([1, 2, 8]),
+  loadout: [8, 1, 2],
+  lastEventText: '右下の竹筒を長押しして賽を振り、「振出し」より出陣されたし',
+  _lastPhase: '',
+  _lastTime: 0
 };
 
 function loadCollection() {
@@ -218,7 +218,7 @@ function loadCollection() {
         }
       }
     }
-  } catch { /* ignore storage errors */ }
+  } catch { /* ignore */ }
 }
 
 function saveCollection() {
@@ -246,47 +246,38 @@ export function initEdoEsugorokuMatch() {
   EState.boostUsed = [false, false];
   EState.albumOpen = false;
   EState.lastEventText = '「振出し（日本橋）」より出陣！中央の「上り」へ一番乗りを目指せ';
+  if (G.eraIdx === 5 && G.phase === 'PLAY' && G.turn !== G.humanSide) {
+    setTimeout(() => triggerRoll(G.turn), 650);
+  }
 }
 
-// 6列×5行の渦巻・飛び双六グリッド座標計算（全26ます：0=振出し, 1..24=錦絵札, 25=中央2x2上り）
-// グリッド配置 (col: 0..5, row: 0..4):
-// 外周時計回り:
-//   0(振出し): (5,4)
-//   1..5(下段右→左): (4,4),(3,4),(2,4),(1,4),(0,4)
-//   6..9(左列下→上): (0,3),(0,2),(0,1),(0,0)
-//  10..14(上段左→右): (1,0),(2,0),(3,0),(4,0),(5,0)
-//  15..17(右列上→下): (5,1),(5,2),(5,3)
-// 内周時計回り:
-//  18..20(内下段右→左): (4,3),(3,3),(2,3)
-//  21..23(内左・内上): (1,3),(1,2),(1,1)
-//  24(上り直前・大星由良助): (4,1) 或いは (4,2) -> 25(中央上り: col 2..3, row 1..2, + (4,1..2))
 const GRID_COORDS = [
-  { c: 5, r: 4, w: 1, h: 1 }, // 0: 振出し
-  { c: 4, r: 4, w: 1, h: 1 }, // 1: い
-  { c: 3, r: 4, w: 1, h: 1 }, // 2: ろ
-  { c: 2, r: 4, w: 1, h: 1 }, // 3: は
-  { c: 1, r: 4, w: 1, h: 1 }, // 4: に
-  { c: 0, r: 4, w: 1, h: 1 }, // 5: ほ
-  { c: 0, r: 3, w: 1, h: 1 }, // 6: へ
-  { c: 0, r: 2, w: 1, h: 1 }, // 7: と
-  { c: 0, r: 1, w: 1, h: 1 }, // 8: ち
-  { c: 0, r: 0, w: 1, h: 1 }, // 9: り
-  { c: 1, r: 0, w: 1, h: 1 }, // 10: ぬ
-  { c: 2, r: 0, w: 1, h: 1 }, // 11: る
-  { c: 3, r: 0, w: 1, h: 1 }, // 12: を
-  { c: 4, r: 0, w: 1, h: 1 }, // 13: わ
-  { c: 5, r: 0, w: 1, h: 1 }, // 14: か
-  { c: 5, r: 1, w: 1, h: 1 }, // 15: よ
-  { c: 5, r: 2, w: 1, h: 1 }, // 16: た
-  { c: 5, r: 3, w: 1, h: 1 }, // 17: れ
-  { c: 4, r: 3, w: 1, h: 1 }, // 18: そ
-  { c: 3, r: 3, w: 1, h: 1 }, // 19: つ
-  { c: 2, r: 3, w: 1, h: 1 }, // 20: ね
-  { c: 1, r: 3, w: 1, h: 1 }, // 21: な
-  { c: 1, r: 2, w: 1, h: 1 }, // 22: ら
-  { c: 1, r: 1, w: 1, h: 1 }, // 23: む
-  { c: 4, r: 2, w: 1, h: 1 }, // 24: う (大星由良助)
-  { c: 2, r: 1, w: 3, h: 2 }  // 25: 上り（中央大判錦絵！注：(4,2)は24番なので上りは col 2..3 row 1..2 + (4,1) を統合した中央特大枠）
+  { c: 5, r: 4, w: 1, h: 1 },
+  { c: 4, r: 4, w: 1, h: 1 },
+  { c: 3, r: 4, w: 1, h: 1 },
+  { c: 2, r: 4, w: 1, h: 1 },
+  { c: 1, r: 4, w: 1, h: 1 },
+  { c: 0, r: 4, w: 1, h: 1 },
+  { c: 0, r: 3, w: 1, h: 1 },
+  { c: 0, r: 2, w: 1, h: 1 },
+  { c: 0, r: 1, w: 1, h: 1 },
+  { c: 0, r: 0, w: 1, h: 1 },
+  { c: 1, r: 0, w: 1, h: 1 },
+  { c: 2, r: 0, w: 1, h: 1 },
+  { c: 3, r: 0, w: 1, h: 1 },
+  { c: 4, r: 0, w: 1, h: 1 },
+  { c: 5, r: 0, w: 1, h: 1 },
+  { c: 5, r: 1, w: 1, h: 1 },
+  { c: 5, r: 2, w: 1, h: 1 },
+  { c: 5, r: 3, w: 1, h: 1 },
+  { c: 4, r: 3, w: 1, h: 1 },
+  { c: 3, r: 3, w: 1, h: 1 },
+  { c: 2, r: 3, w: 1, h: 1 },
+  { c: 1, r: 3, w: 1, h: 1 },
+  { c: 1, r: 2, w: 1, h: 1 },
+  { c: 1, r: 1, w: 1, h: 1 },
+  { c: 4, r: 1, w: 1, h: 2 },
+  { c: 2, r: 1, w: 2, h: 2 }
 ];
 
 const SHEET = { x: 186, y: 38, w: 836, h: 612, gridX: 198, gridY: 50, gridW: 762, gridH: 588 };
@@ -294,28 +285,6 @@ const SHEET = { x: 186, y: 38, w: 836, h: 612, gridX: 198, gridY: 50, gridW: 762
 export function getSquareRect(sqIdx) {
   const cw = SHEET.gridW / 6;
   const ch = SHEET.gridH / 5;
-  if (sqIdx === 25) {
-    // 中央「上り」大判枠（col 2..3, row 1..2 の2x2大判＋右上の余白）
-    return {
-      x: SHEET.gridX + cw * 2,
-      y: SHEET.gridY + ch * 1,
-      w: cw * 2,
-      h: ch * 2,
-      cx: SHEET.gridX + cw * 3,
-      cy: SHEET.gridY + ch * 2
-    };
-  }
-  if (sqIdx === 24) {
-    // 24番（大星由良助）は col 4, row 1..2 の縦長大判枠にして中央「上り」の右隣を隙間なく埋める
-    return {
-      x: SHEET.gridX + cw * 4,
-      y: SHEET.gridY + ch * 1,
-      w: cw,
-      h: ch * 2,
-      cx: SHEET.gridX + cw * 4.5,
-      cy: SHEET.gridY + ch * 2
-    };
-  }
   const g = GRID_COORDS[Math.max(0, Math.min(25, sqIdx))];
   return {
     x: SHEET.gridX + g.c * cw,
@@ -335,21 +304,18 @@ function hasEquippedCategory(player, cat) {
   });
 }
 
-// 各カードの浮世絵ミニチュア描画（化物・英勇・昔咄・名物の象徴的な錦絵図柄）
 function drawCardUkiyoeArt(ctx, x, y, w, h, card) {
   ctx.save();
   ctx.beginPath();
   ctx.rect(x + 2, y + 2, w - 4, h - 4);
   ctx.clip();
 
-  // 背景グラデーション（江戸植物・鉱物顔料）
   const g = ctx.createLinearGradient(x, y, x, y + h);
   g.addColorStop(0, card.bg);
   g.addColorStop(1, '#261e18');
   ctx.fillStyle = g;
   ctx.fillRect(x, y, w, h);
 
-  // 浮世絵特有の霞（かすみ）帯
   ctx.fillStyle = 'rgba(246, 234, 206, 0.22)';
   ctx.fillRect(x, y + h * 0.58, w, h * 0.18);
 
@@ -357,7 +323,6 @@ function drawCardUkiyoeArt(ctx, x, y, w, h, card) {
   const cy = y + h * 0.52;
 
   if (card.cat === '化物') {
-    // 百物語・妖怪図柄（妖気火の玉・三つ目・九尾・波・提灯）
     ctx.fillStyle = card.accent;
     ctx.beginPath();
     ctx.arc(cx, cy - 4, 18, 0, Math.PI * 2);
@@ -366,23 +331,20 @@ function drawCardUkiyoeArt(ctx, x, y, w, h, card) {
     ctx.lineWidth = 1.8;
     ctx.stroke();
 
-    // 妖怪の眼・隈取
     ctx.fillStyle = '#1a110b';
     ctx.beginPath();
     ctx.arc(cx - 6, cy - 6, 2.5, 0, Math.PI * 2);
     ctx.arc(cx + 6, cy - 6, 2.5, 0, Math.PI * 2);
     if (card.id === 14 || card.id === 23) {
-      ctx.arc(cx, cy - 13, 2.8, 0, Math.PI * 2); // 三つ目
+      ctx.arc(cx, cy - 13, 2.8, 0, Math.PI * 2);
     }
     ctx.fill();
 
-    // 不気味な火の玉（陰火）
     ctx.fillStyle = 'rgba(255, 90, 50, 0.78)';
     ctx.beginPath();
     ctx.arc(x + 16, y + h - 18, 5, 0, Math.PI * 2);
     ctx.fill();
   } else if (card.cat === '英勇') {
-    // 錦絵武者絵・忠臣蔵役者絵（兜前立・大薙刀・陣羽織）
     ctx.fillStyle = '#1c1510';
     ctx.beginPath();
     ctx.moveTo(cx - 22, cy + 24);
@@ -391,14 +353,12 @@ function drawCardUkiyoeArt(ctx, x, y, w, h, card) {
     ctx.closePath();
     ctx.fill();
 
-    // 鍬形（兜の金角）
     ctx.strokeStyle = '#f2c955';
     ctx.lineWidth = 2.6;
     ctx.beginPath();
     ctx.arc(cx, cy - 10, 15, Math.PI * 1.1, Math.PI * 1.9);
     ctx.stroke();
 
-    // 役者似顔絵の白塗り顔と紅隈取
     ctx.fillStyle = '#f5ead6';
     ctx.beginPath();
     ctx.arc(cx, cy + 2, 10, 0, Math.PI * 2);
@@ -412,7 +372,6 @@ function drawCardUkiyoeArt(ctx, x, y, w, h, card) {
     ctx.lineTo(cx + 2, cy + 2);
     ctx.stroke();
   } else if (card.cat === '昔咄') {
-    // 赤本・昔咄図柄（桃・桜・満月・舟）
     ctx.fillStyle = card.accent;
     ctx.beginPath();
     ctx.arc(cx, cy, 17, 0, Math.PI * 2);
@@ -422,7 +381,6 @@ function drawCardUkiyoeArt(ctx, x, y, w, h, card) {
     ctx.arc(cx - 4, cy - 3, 10, 0, Math.PI * 2);
     ctx.fill();
   } else {
-    // 江戸名物・善玉悪玉（大提灯に「善」「名」）
     ctx.fillStyle = '#f7efe0';
     ctx.beginPath();
     ctx.arc(cx, cy, 17, 0, Math.PI * 2);
@@ -435,7 +393,6 @@ function drawCardUkiyoeArt(ctx, x, y, w, h, card) {
     ctx.textAlign = 'center';
     ctx.fillText(card.id === 7 ? '善' : '名', cx, cy + 5);
   }
-
   ctx.restore();
 }
 
@@ -443,7 +400,6 @@ function drawSingleSquare(ctx, sqIdx) {
   const r = getSquareRect(sqIdx);
 
   if (sqIdx === 0) {
-    // 0: 振出し（右下・日本橋）
     ctx.fillStyle = '#c9432c';
     ctx.fillRect(r.x, r.y, r.w, r.h);
     ctx.strokeStyle = '#1c140d';
@@ -466,7 +422,6 @@ function drawSingleSquare(ctx, sqIdx) {
   }
 
   if (sqIdx === 25) {
-    // 25: 中央2x2特大「上り（大江戸大団円）」パネル
     const grad = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
     grad.addColorStop(0, '#3a668c');
     grad.addColorStop(0.45, '#ebd082');
@@ -474,7 +429,6 @@ function drawSingleSquare(ctx, sqIdx) {
     ctx.fillStyle = grad;
     ctx.fillRect(r.x, r.y, r.w, r.h);
 
-    // 浮世絵の赤富士・瑞雲
     ctx.fillStyle = '#b8422a';
     ctx.beginPath();
     ctx.moveTo(r.cx - 85, r.y + r.h - 28);
@@ -484,7 +438,6 @@ function drawSingleSquare(ctx, sqIdx) {
     ctx.closePath();
     ctx.fill();
 
-    // 富士山頂の白雪
     ctx.fillStyle = '#f7f2e6';
     ctx.beginPath();
     ctx.moveTo(r.cx - 32, r.y + 90);
@@ -497,11 +450,9 @@ function drawSingleSquare(ctx, sqIdx) {
     ctx.closePath();
     ctx.fill();
 
-    // 金雲（すやり霞）
     ctx.fillStyle = 'rgba(244, 216, 138, 0.88)';
     ctx.fillRect(r.x + 12, r.y + r.h - 54, r.w - 24, 38);
 
-    // 実物絵双六と同じ左上の巨大な朱丸「上り」印
     ctx.fillStyle = '#cc3722';
     ctx.beginPath();
     ctx.arc(r.x + 44, r.y + 44, 30, 0, Math.PI * 2);
@@ -515,12 +466,11 @@ function drawSingleSquare(ctx, sqIdx) {
     ctx.textAlign = 'center';
     ctx.fillText('上り', r.x + 44, r.y + 53);
 
-    // 中央大題箋
     ctx.fillStyle = '#1d1209';
-    ctx.font = `800 22px ${FONT_BRUSH}`;
-    ctx.fillText('大江戸百鬼英勇・大団円', r.cx + 16, r.y + 42);
-    ctx.font = `600 13px ${FONT_MINCHO}`;
-    ctx.fillText('一番乗りにて褒美錦絵札を下賜す', r.cx + 16, r.y + r.h - 30);
+    ctx.font = `800 20px ${FONT_BRUSH}`;
+    ctx.fillText('大江戸百鬼英勇・大団円', r.cx + 18, r.y + 42);
+    ctx.font = `600 12.5px ${FONT_MINCHO}`;
+    ctx.fillText('一番乗りにて褒美錦絵札を下賜す', r.cx + 12, r.y + r.h - 30);
 
     ctx.strokeStyle = '#1c140d';
     ctx.lineWidth = 2.6;
@@ -532,10 +482,8 @@ function drawSingleSquare(ctx, sqIdx) {
   const isOwned = EState.unlocked.has(card.id);
   const isEquipped = EState.loadout.includes(card.id);
 
-  // 1. 浮世絵背景と図柄
   drawCardUkiyoeArt(ctx, r.x, r.y, r.w, r.h, card);
 
-  // 2. 右側の紅/黄短冊題箋（実物絵双六の縦長タイトル枠）
   const stripW = 26;
   const stripX = r.x + r.w - stripW - 3;
   const stripY = r.y + 4;
@@ -548,7 +496,6 @@ function drawSingleSquare(ctx, sqIdx) {
   ctx.lineWidth = 1.1;
   ctx.strokeRect(stripX, stripY, stripW, stripH);
 
-  // 短冊内の縦書きカード名（最大5文字）
   ctx.fillStyle = '#fcf5e5';
   ctx.font = `800 11.5px ${FONT_MINCHO}`;
   ctx.textAlign = 'center';
@@ -557,7 +504,6 @@ function drawSingleSquare(ctx, sqIdx) {
     ctx.fillText(nameChars[i], stripX + stripW / 2, stripY + 13 + i * 13);
   }
 
-  // 3. 左上の「いろは丸紋」＋番号（『英勇揃伊呂波双六』様式）
   ctx.fillStyle = '#f2ca52';
   ctx.beginPath();
   ctx.arc(r.x + 15, r.y + 15, 11, 0, Math.PI * 2);
@@ -570,7 +516,6 @@ function drawSingleSquare(ctx, sqIdx) {
   ctx.textAlign = 'center';
   ctx.fillText(card.iroha, r.x + 15, r.y + 19);
 
-  // 「泊」丸印（『大日本神社双六』様式）または飛び印
   if (card.ruleType === 'stay') {
     ctx.fillStyle = '#c93422';
     ctx.beginPath();
@@ -581,7 +526,6 @@ function drawSingleSquare(ctx, sqIdx) {
     ctx.fillText('泊', r.x + 16, r.y + 42);
   }
 
-  // 4. 下部の飛び・戻り規則帯
   ctx.fillStyle = 'rgba(248, 238, 215, 0.94)';
   ctx.fillRect(r.x + 2, r.y + r.h - 21, r.w - 4, 19);
   ctx.fillStyle = card.ruleType === 'back' ? '#a82416' : (card.ruleType === 'stay' ? '#8c5210' : '#184e32');
@@ -589,7 +533,6 @@ function drawSingleSquare(ctx, sqIdx) {
   ctx.textAlign = 'center';
   ctx.fillText(card.ruleLabel, r.cx, r.y + r.h - 7);
 
-  // 5. コレクション収蔵済みの朱印・守り札枠
   if (isOwned) {
     ctx.fillStyle = 'rgba(204, 52, 34, 0.88)';
     ctx.fillRect(r.x + 30, r.y + 4, 18, 15);
@@ -603,16 +546,13 @@ function drawSingleSquare(ctx, sqIdx) {
     ctx.strokeRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
   }
 
-  // 墨枠
   ctx.strokeStyle = '#1e1610';
   ctx.lineWidth = 1.6;
   ctx.strokeRect(r.x, r.y, r.w, r.h);
 }
 
-// 経路の朱矢印を描画して渦巻ルートを一目で分かりやすくする
 function drawRouteArrows(ctx) {
   ctx.save();
-  ctx.fillStyle = 'rgba(198, 52, 34, 0.85)';
   ctx.font = `800 13px ${FONT_MINCHO}`;
   ctx.textAlign = 'center';
   for (let i = 0; i < 25; i++) {
@@ -644,7 +584,6 @@ function drawPlayerKoma(ctx, x, y, player, isHighlight) {
   ctx.shadowBlur = 8;
   ctx.shadowOffsetY = 4;
 
-  // 江戸将棋駒／絵双六木駒型（五角形）
   const r = 17;
   ctx.beginPath();
   ctx.moveTo(x, y - r * 1.15);
@@ -678,7 +617,6 @@ function drawPlayerKoma(ctx, x, y, player, isHighlight) {
   ctx.restore();
 }
 
-// 浮世絵大図鑑（24枚カードコレクション＆懐中守り札編成モーダル）
 function renderUkiyoeAlbumModal(ctx) {
   ctx.save();
   ctx.fillStyle = 'rgba(10, 6, 4, 0.88)';
@@ -691,13 +629,11 @@ function renderUkiyoeAlbumModal(ctx) {
   ctx.lineWidth = 3;
   ctx.strokeRect(px + 6, py + 6, pw - 12, ph - 12);
 
-  // ヘッダー
   ctx.fillStyle = '#1e130a';
   ctx.font = `800 25px ${FONT_BRUSH}`;
   ctx.textAlign = 'left';
   ctx.fillText(`江戸錦絵大図鑑 ── 歌川国芳一門・二十四撰 （蒐集 ${EState.unlocked.size} ／ 二十四枚）`, px + 26, py + 42);
 
-  // 閉じるボタン
   const closeBtn = { x: px + pw - 134, y: py + 16, w: 112, h: 36 };
   ctx.fillStyle = '#b83220';
   ctx.fillRect(closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h);
@@ -706,7 +642,6 @@ function renderUkiyoeAlbumModal(ctx) {
   ctx.textAlign = 'center';
   ctx.fillText('盤面へ戻る', closeBtn.x + closeBtn.w / 2, closeBtn.y + 24);
 
-  // 左側：6列×4行のカード一覧グリッド
   const gx = px + 24, gy = py + 62;
   const cw = 104, ch = 142, gapX = 10, gapY = 10;
 
@@ -755,7 +690,6 @@ function renderUkiyoeAlbumModal(ctx) {
     ctx.strokeRect(cx, cy, cw, ch);
   }
 
-  // 右側：選択中カードの拡大錦絵鑑賞＆歴史考証・懐中守り札装備パネル
   const dx = gx + 6 * (cw + gapX) + 14;
   const dy = gy;
   const dw = px + pw - dx - 22;
@@ -789,7 +723,6 @@ function renderUkiyoeAlbumModal(ctx) {
   ctx.font = `600 12px ${FONT_MINCHO}`;
   ctx.fillText(`原典：${selCard.source}`, dx + dw / 2, dy + 288);
 
-  // 解説文折り返し描画
   ctx.fillStyle = '#24180e';
   ctx.font = `600 13px ${FONT_MINCHO}`;
   ctx.textAlign = 'left';
@@ -801,7 +734,6 @@ function renderUkiyoeAlbumModal(ctx) {
     ctx.fillText(loreText.slice(i * lineLen, (i + 1) * lineLen), dx + 22, dy + 320 + i * 21);
   }
 
-  // 守り札ご利益説明
   const boonDesc = selCard.cat === '英勇'
     ? '◆懐中守り札ご利益【英勇】：対局中一回、賽の出目に「＋二」を加勢できる'
     : (selCard.cat === '化物'
@@ -811,7 +743,6 @@ function renderUkiyoeAlbumModal(ctx) {
   ctx.font = `800 12px ${FONT_MINCHO}`;
   ctx.fillText(boonDesc, dx + 18, dy + 412);
 
-  // 装備トグルボタン
   const eqBtn = { x: dx + 34, y: dy + dh - 118, w: dw - 68, h: 42 };
   ctx.fillStyle = !selOwned ? '#9e9280' : (selEquipped ? '#4a3b2c' : '#c93724');
   ctx.fillRect(eqBtn.x, eqBtn.y, eqBtn.w, eqBtn.h);
@@ -824,7 +755,6 @@ function renderUkiyoeAlbumModal(ctx) {
     eqBtn.y + 27
   );
 
-  // 全解放テストボタン（開発・鑑賞用：ワンクリックで全24枚の浮世絵を鑑賞可能）
   const unlockAllBtn = { x: dx + 34, y: dy + dh - 62, w: dw - 68, h: 36 };
   ctx.fillStyle = '#2d536c';
   ctx.fillRect(unlockAllBtn.x, unlockAllBtn.y, unlockAllBtn.w, unlockAllBtn.h);
@@ -840,14 +770,30 @@ export const BOOST_BTN = { x: 18, y: 366, w: 152, h: 44 };
 export const DICE_TUBE_RECT = { x: 1044, y: 470, w: 210, h: 175 };
 
 export function renderEdoEsugoroku() {
-  // 1. 江戸座敷背景
+  // フェーズ遷移の自動検知＆フレームdt更新
+  const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+  const dt = EState._lastTime ? Math.min(0.1, (now - EState._lastTime) / 1000) : 0.016;
+  EState._lastTime = now;
+
+  if (EState._lastPhase !== G.phase) {
+    if (G.phase === 'PLAY') {
+      initEdoEsugorokuMatch();
+    }
+    EState._lastPhase = G.phase;
+  }
+
+  if (G.phase === 'PLAY') {
+    G.diceRolling = false;
+    G.animStone = null;
+    updateEdoEsugoroku(dt);
+  }
+
   const bgGrad = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, 760);
   bgGrad.addColorStop(0, '#2b2017');
   bgGrad.addColorStop(1, '#0d0906');
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, W, H);
 
-  // 2. 奉書紙大判摺物シート（紙の余白と右耳の版元・絵師題箋）
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.65)';
   ctx.shadowBlur = 24;
@@ -860,7 +806,6 @@ export function renderEdoEsugoroku() {
   ctx.fillRect(SHEET.x, SHEET.y, SHEET.w, SHEET.h);
   ctx.restore();
 
-  // 折り目（神保町の古書摺物特有の十字折り線）
   ctx.strokeStyle = 'rgba(110, 86, 56, 0.25)';
   ctx.lineWidth = 1.4;
   ctx.beginPath();
@@ -870,7 +815,6 @@ export function renderEdoEsugoroku() {
   ctx.lineTo(SHEET.x + SHEET.w, SHEET.y + SHEET.h / 2);
   ctx.stroke();
 
-  // 右耳の版元・大題箋（『英勇揃伊呂波双六』『奥御殿御祝儀双六』様式）
   const earX = SHEET.gridX + SHEET.gridW + 8;
   const earW = SHEET.x + SHEET.w - earX - 6;
   ctx.fillStyle = '#1d140c';
@@ -886,7 +830,6 @@ export function renderEdoEsugoroku() {
   for (let i = 0; i < subAuthor.length; i++) {
     ctx.fillText(subAuthor[i], earX + earW / 2, SHEET.y + 365 + i * 16);
   }
-  // 改印・版元朱印
   ctx.strokeStyle = '#c93724';
   ctx.lineWidth = 1.6;
   ctx.strokeRect(earX + 8, SHEET.y + 535, earW - 16, 56);
@@ -896,18 +839,15 @@ export function renderEdoEsugoroku() {
   ctx.fillText('蔦屋', earX + earW / 2, SHEET.y + 570);
   ctx.fillText('寿梓', earX + earW / 2, SHEET.y + 586);
 
-  // 3. 全26ます（振出し＋二十四錦絵札＋中央上り）の描画
   for (let sq = 0; sq <= 25; sq++) {
     drawSingleSquare(ctx, sq);
   }
   drawRouteArrows(ctx);
 
-  // 外周二重墨枠
   ctx.strokeStyle = '#1a120b';
   ctx.lineWidth = 3.0;
   ctx.strokeRect(SHEET.gridX - 3, SHEET.gridY - 3, SHEET.gridW + 6, SHEET.gridH + 6);
 
-  // 4. プレイヤー駒（黒駒・白駒）の描画（移動アニメーション対応）
   for (let p = 0; p < 2; p++) {
     let cx, cy;
     if (EState.stepAnim && EState.stepAnim.player === p) {
@@ -925,7 +865,6 @@ export function renderEdoEsugoroku() {
     drawPlayerKoma(ctx, cx, cy, p, G.turn === p && G.phase === 'PLAY');
   }
 
-  // 5. 左側情報パネル＆「浮世絵大図鑑」「懐中守り札」UI
   ctx.fillStyle = 'rgba(20, 13, 8, 0.88)';
   ctx.fillRect(12, 38, 164, 612);
   ctx.strokeStyle = 'rgba(212, 166, 74, 0.55)';
@@ -952,14 +891,12 @@ export function renderEdoEsugoroku() {
   ctx.fillText(`現在地：${G.humanSide === 0 ? p1Sq : p0Sq}`, 94, 216);
   ctx.fillText(`残り：${KANJI[25 - EState.pos[1 - G.humanSide]] || (25 - EState.pos[1 - G.humanSide])} ます`, 94, 238);
 
-  // 現在の手番表示
   ctx.fillStyle = G.turn === G.humanSide ? '#c93724' : '#3a5875';
   ctx.fillRect(20, 256, 148, 36);
   ctx.fillStyle = '#fff6e6';
   ctx.font = `800 14px ${FONT_MINCHO}`;
   ctx.fillText(G.turn === G.humanSide ? '◆ 貴殿の振り番' : '◇ 相手の振り番', 94, 279);
 
-  // 「浮世絵大図鑑」ボタン
   ctx.fillStyle = '#8c2d19';
   ctx.fillRect(ALBUM_BTN.x, ALBUM_BTN.y, ALBUM_BTN.w, ALBUM_BTN.h);
   ctx.strokeStyle = '#f2c955';
@@ -969,7 +906,6 @@ export function renderEdoEsugoroku() {
   ctx.font = `800 13.5px ${FONT_MINCHO}`;
   ctx.fillText(`浮世絵図鑑 (${EState.unlocked.size}/24)`, ALBUM_BTN.x + ALBUM_BTN.w / 2, ALBUM_BTN.y + 27);
 
-  // 「英勇守り札・武威加勢（出目＋二）」発動ボタン
   const canBoost = hasEquippedCategory(G.humanSide, '英勇') && !EState.boostUsed[G.humanSide];
   ctx.fillStyle = EState.boostArmed ? '#d98a2b' : (canBoost ? '#2e5942' : '#3d352e');
   ctx.fillRect(BOOST_BTN.x, BOOST_BTN.y, BOOST_BTN.w, BOOST_BTN.h);
@@ -983,7 +919,6 @@ export function renderEdoEsugoroku() {
     BOOST_BTN.y + 27
   );
 
-  // 装備中の懐中守り札（3枚）ミニ表示
   ctx.fillStyle = '#e8c574';
   ctx.font = `800 13px ${FONT_MINCHO}`;
   ctx.fillText('▼ 懐中守り札（三枚）', 94, 434);
@@ -1006,7 +941,6 @@ export function renderEdoEsugoroku() {
     }
   }
 
-  // 6. 右側：張子竹筒・骨賽一粒＆操作案内
   ctx.fillStyle = 'rgba(20, 13, 8, 0.88)';
   ctx.fillRect(1034, 38, 232, 612);
   ctx.strokeStyle = 'rgba(212, 166, 74, 0.55)';
@@ -1032,7 +966,6 @@ export function renderEdoEsugoroku() {
     ctx.fillText(ln, 1150, 98 + idx * 21);
   });
 
-  // 大きな骨賽（一粒）描画
   const dx = 1118, dy = 290, ds = 64;
   ctx.fillStyle = '#fcf6e8';
   ctx.fillRect(dx, dy, ds, ds);
@@ -1048,7 +981,6 @@ export function renderEdoEsugoroku() {
   ctx.font = `800 13px ${FONT_MINCHO}`;
   ctx.fillText(`出目：${KANJI[pipVal]}`, 1150, dy + ds + 24);
 
-  // 張子竹筒ボタン
   const canRoll = G.phase === 'PLAY' && G.turn === G.humanSide && !EState.rolling && !EState.stepAnim;
   const shakeX = EState.holdingTube ? (Math.sin(Date.now() * 0.06) * 5) : 0;
   ctx.fillStyle = canRoll ? '#8c3b20' : '#3a2c22';
@@ -1064,7 +996,6 @@ export function renderEdoEsugoroku() {
   ctx.font = `600 12.5px ${FONT_MINCHO}`;
   ctx.fillText(canRoll ? 'クリックまたは長押しで振る' : '相手の番／移動中', DICE_TUBE_RECT.x + DICE_TUBE_RECT.w / 2, DICE_TUBE_RECT.y + 112);
 
-  // 下部ステータスバー＆新局・時代替ボタン
   ctx.fillStyle = 'rgba(18, 11, 6, 0.92)';
   ctx.fillRect(186, 662, 836, 46);
   ctx.strokeStyle = 'rgba(212, 166, 74, 0.45)';
@@ -1074,7 +1005,6 @@ export function renderEdoEsugoroku() {
   ctx.textAlign = 'center';
   ctx.fillText(EState.lastEventText, 604, 690);
 
-  // 右下共通ボタン（新局・時代替）
   for (const [btn, label] of [[NEW_GAME_BTN, '新局'], [CHANGE_ERA_BTN, '時代替']]) {
     ctx.fillStyle = '#2b1b10';
     ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
@@ -1087,7 +1017,6 @@ export function renderEdoEsugoroku() {
     ctx.fillText(label, btn.x + btn.w / 2, btn.y + 27);
   }
 
-  // 朱印スタンプ演出
   if (G.stamp && G.stamp.alpha > 0) {
     ctx.save();
     ctx.globalAlpha = Math.min(1, G.stamp.alpha);
@@ -1106,7 +1035,6 @@ export function renderEdoEsugoroku() {
     ctx.restore();
   }
 
-  // 浮世絵大図鑑モーダル
   if (EState.albumOpen) {
     renderUkiyoeAlbumModal(ctx);
   }
@@ -1115,7 +1043,6 @@ export function renderEdoEsugoroku() {
 function finishMatch(winner) {
   G.winner = winner;
   G.winReason = '新板浮世絵双六・中央「上り」一番乗り完遂';
-  // 勝利ボーナス：未収蔵の錦絵札を1枚確定解放
   if (winner === G.humanSide) {
     const locked = UKIYOE_CARDS.filter(c => !EState.unlocked.has(c.id));
     if (locked.length > 0) {
@@ -1150,7 +1077,6 @@ function advanceTurn() {
 }
 
 function applySquareArrival(player, sq, rolledDie) {
-  // 相手の駒と同じマス（1..24）に止まったら追突はじき！
   const opp = 1 - player;
   if (sq >= 1 && sq <= 24 && EState.pos[opp] === sq) {
     EState.pos[opp] = Math.max(0, EState.pos[opp] - 3);
@@ -1169,7 +1095,6 @@ function applySquareArrival(player, sq, rolledDie) {
     return;
   }
 
-  // 貴殿が止まったら即座に浮世絵図鑑へ収蔵！
   let newlyUnlocked = false;
   if (player === G.humanSide && !EState.unlocked.has(card.id)) {
     EState.unlocked.add(card.id);
@@ -1182,11 +1107,10 @@ function applySquareArrival(player, sq, rolledDie) {
   const unlockNote = newlyUnlocked ? `【新収蔵：${card.name}】 ` : '';
   EState.lastEventText = `${unlockNote}${who}が「${card.iroha}・${card.name}」に到着 ── ${card.ruleLabel}`;
 
-  // 飛び・戻り・泊まり・もう一振りの解決
   if (card.ruleType === 'jump' || (card.ruleType === 'odd_boost' && rolledDie % 2 === 1)) {
     const jumpSteps = card.val;
     const targetSq = Math.min(25, sq + jumpSteps);
-    showStamp(`${card.name}`, `${ unlockNote }${card.ruleLabel}！`);
+    showStamp(`${card.name}`, `${unlockNote}${card.ruleLabel}！`);
     EState.stepAnim = {
       player,
       fromSq: sq,
@@ -1320,7 +1244,6 @@ export function updateEdoEsugoroku(dt) {
 }
 
 export function handleEdoEsugorokuPointerDown(bx, by) {
-  // 図鑑モーダルが開いている場合
   if (EState.albumOpen) {
     const px = 84, py = 36, pw = W - 168, ph = H - 72;
     const closeBtn = { x: px + pw - 134, y: py + 16, w: 112, h: 36 };
@@ -1367,14 +1290,12 @@ export function handleEdoEsugorokuPointerDown(bx, by) {
     return true;
   }
 
-  // 左側「浮世絵図鑑」ボタン
   if (isInsideRect(bx, by, ALBUM_BTN)) {
     EState.albumOpen = true;
     playStoneLift();
     return true;
   }
 
-  // 左側「英勇札：出目＋二」ボタン
   if (isInsideRect(bx, by, BOOST_BTN)) {
     if (hasEquippedCategory(G.humanSide, '英勇') && !EState.boostUsed[G.humanSide]) {
       EState.boostArmed = !EState.boostArmed;
@@ -1383,7 +1304,6 @@ export function handleEdoEsugorokuPointerDown(bx, by) {
     return true;
   }
 
-  // 盤上の任意の浮世絵カード（1..24）をクリックしたら図鑑でそのカードを拡大表示
   for (let sq = 1; sq <= 24; sq++) {
     if (isInsideRect(bx, by, getSquareRect(sq))) {
       EState.selectedCardId = sq;
@@ -1393,7 +1313,6 @@ export function handleEdoEsugorokuPointerDown(bx, by) {
     }
   }
 
-  // 右下の竹筒長押し開始
   if (G.phase === 'PLAY' && G.turn === G.humanSide && !EState.rolling && !EState.stepAnim) {
     if (isInsideRect(bx, by, DICE_TUBE_RECT)) {
       EState.holdingTube = true;
@@ -1413,4 +1332,36 @@ export function handleEdoEsugorokuPointerUp() {
     return true;
   }
   return false;
+}
+
+// ブラウザ環境でキャプチャフェーズのポインタイベントを自動登録
+if (typeof window !== 'undefined') {
+  window.addEventListener('pointerdown', (e) => {
+    if (G.eraIdx !== 5 || G.phase !== 'PLAY') return;
+    const canvasEl = (ctx && ctx.canvas) || document.querySelector('canvas');
+    if (!canvasEl) return;
+    const rect = canvasEl.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const bx = (e.clientX - rect.left) * (W / rect.width);
+    const by = (e.clientY - rect.top) * (H / rect.height);
+
+    if (!EState.albumOpen && isInsideRect(bx, by, NEW_GAME_BTN)) {
+      setTimeout(() => initEdoEsugorokuMatch(), 10);
+      return;
+    }
+    if (!EState.albumOpen && isInsideRect(bx, by, CHANGE_ERA_BTN)) {
+      return;
+    }
+    if (handleEdoEsugorokuPointerDown(bx, by)) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    }
+  }, { capture: true });
+
+  window.addEventListener('pointerup', (e) => {
+    if (G.eraIdx !== 5 || G.phase !== 'PLAY') return;
+    if (handleEdoEsugorokuPointerUp()) {
+      e.stopImmediatePropagation();
+    }
+  }, { capture: true });
 }
