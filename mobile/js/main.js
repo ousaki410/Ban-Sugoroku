@@ -225,7 +225,7 @@ function startMatch() {
           showStamp('一荷崩し', '敵の二石陣を強襲粉砕せり');
         } else if (hit) {
           G.boardShake = 8;
-          showStamp(mode.isOimawashi ? '絵合討取' : '叩き', mode.isOimawashi ? '敵の殿駒を御殿へ納む' : '孤石を中帯へ放逐す');
+          showStamp(mode.isOimawashi ? '追い抜き討取' : '叩き', mode.isOimawashi ? '敵の殿石を討ち取る' : '孤石を中帯へ放逐す');
         }
 
         const idx = G.rem.indexOf(step.die);
@@ -237,7 +237,7 @@ function startMatch() {
           const isMuji = mode.allowMujiWin && SugorokuCore.isMujiWin(G.pts, G.bar, w);
           G.winReason = isMuji
             ? '無地勝ち・内陣六連荷完封'
-            : (mode.canBearOff ? '全石盤外上がり完遂' : (mode.isOimawashi ? '源氏絵合・六駒御殿納め完遂' : '全石内陣集結・入勝'));
+            : (mode.canBearOff ? '全石盤外上がり完遂' : (mode.isOimawashi ? '追廻し六石討取完遂' : '全石内陣集結・入勝'));
           G.boardShake = 16;
           if (w === G.humanSide) playVictoryFanfare();
           else playDefeatBell();

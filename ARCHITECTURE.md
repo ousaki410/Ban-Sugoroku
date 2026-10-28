@@ -18,3 +18,4 @@ This repository is modularized so every file stays under ~310 lines for optimal 
 | `core/sugoroku.h` / `.c` | ~360 | Standalone **C11 Embeddable Core** for C/C++ games (SDL2/SDL3) | Updating C library API |
 | `tools/bake_assets.py` | ~145 | Exports procedural SFX and sprites to `.wav` and `.png` files in `mobile/assets/` | Baking static assets for external engines |
 | `tools/export_warband_ms.py` | ~110 | Exports Muromachi Hon-Sugoroku to *Mount & Blade: Warband* `ModuleSystem` scripts | Integrating with Warband mods |
+| `mobile/js/ukiyoe_esugoroku.js` | ~590 | **Era 6 Edo Ukiyo-e E-Sugoroku & 24-Card Collection**: Spiral *Mawari/Tobi-Sugoroku* board, Utagawa Kuniyoshi school 24 woodblock cards (*Bakemono*, *Chushingura*, *Mukashibanashi*, *Meibutsu*), *Ukiyoe Daizukan* album modal, and 3-card talisman loadout system | Adding new E-Sugoroku cards, tuning jump/stay/back events, or expanding card abilities |

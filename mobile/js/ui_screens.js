@@ -194,7 +194,7 @@ export function renderSettlementOverlay() {
 
     const bIn = mode.canBearOff || mode.isOimawashi ? G.off[0] : SugorokuCore.countInner(G.pts, 0);
     const wIn = mode.canBearOff || mode.isOimawashi ? G.off[1] : SugorokuCore.countInner(G.pts, 1);
-    const unitLabel = mode.isOimawashi ? '絵合納め数' : (mode.canBearOff ? '上がり石数' : '内陣集結石数');
+    const unitLabel = mode.isOimawashi ? '討取数' : (mode.canBearOff ? '上がり石数' : '内陣集結石数');
     const goalCnt = mode.isOimawashi ? 6 : mode.stoneCount;
 
     const rows = [
