@@ -4,10 +4,7 @@ import { playSingleRattleGrain, playDiceBounce, playStoneLift, playStoneImpact, 
 import { SugorokuCore } from './core.js';
 import { getEraCardRect } from './ui_screens.js';
 import { render } from './board_renderer.js';
-import {
-  initEdoEsugorokuMatch, updateEdoEsugoroku,
-  handleEdoEsugorokuPointerDown, handleEdoEsugorokuPointerUp
-} from './ukiyoe_esugoroku.js';
+import { spawnShockwave } from './state.js';
 
 function startMatch() {
     const mode = currentEra();
@@ -34,16 +31,6 @@ function startMatch() {
     G.tube.dx = 0; G.tube.dy = 0; G.tube.angle = 0;
     G.flyingStone = null;
     showStamp(mode.title, `${mode.culture}・${G.humanSide === 0 ? '黒石先手' : '白石後手'}`);
-
-    // 第六場景（江戸・浮世絵絵双六）は専用の状態機で進行する
-    if (G.eraIdx === 5) {
-      G.phase = 'WAIT_ROLL';
-      G.statusText = G.turn === G.humanSide
-        ? '右下の竹筒を長押しして賽を振り、「振出し」より出陣せよ'
-        : '相手が竹筒を振っている…';
-      initEdoEsugorokuMatch();
-      return;
-    }
 
     if (G.turn === G.humanSide) {
       G.phase = 'WAIT_ROLL';
@@ -106,6 +93,13 @@ function startMatch() {
     const d2 = 1 + Math.floor(Math.random() * 6);
     G.dice = [d1, d2];
     G.rolledPair = (d1 === d2);
+    if (G.rolledPair) {
+      G.boardShake = 36;
+      spawnShockwave(G.tube.baseX, G.tube.baseY, 36);
+    } else {
+      G.boardShake = 14;
+      spawnShockwave(G.tube.baseX, G.tube.baseY, 14);
+    }
     if (G.rolledPair) G.stats.doubles++;
     G.tube.tipped = true;
     playDiceBounce(0.95);
@@ -235,10 +229,12 @@ function startMatch() {
         playStoneImpact(hit);
 
         if (smashedIkka) {
-          G.boardShake = 14;
+          G.boardShake = 52;
+          spawnShockwave(tXY.x, tXY.y, 52);
           showStamp('一荷崩し', '敵の二石陣を強襲粉砕せり');
         } else if (hit) {
-          G.boardShake = 8;
+          G.boardShake = 32;
+          spawnShockwave(tXY.x, tXY.y, 32);
           showStamp(mode.isOimawashi ? '追い抜き討取' : '叩き', mode.isOimawashi ? '敵の殿石を討ち取る' : '孤石を中帯へ放逐す');
         }
 
@@ -252,7 +248,9 @@ function startMatch() {
           G.winReason = isMuji
             ? '無地勝ち・内陣六連荷完封'
             : (mode.canBearOff ? '全石盤外上がり完遂' : (mode.isOimawashi ? '追廻し六石討取完遂' : '全石内陣集結・入勝'));
-          G.boardShake = 16;
+          G.boardShake = 56;
+          const bc = B();
+          spawnShockwave(bc.x + bc.w / 2, bc.y + bc.h / 2, 56);
           if (w === G.humanSide) playVictoryFanfare();
           else playDefeatBell();
           G.phase = 'SETTLEMENT';
@@ -324,7 +322,7 @@ function startMatch() {
 
   function updatePhysics() {
     G.pulseTick += 0.08;
-    if (G.boardShake > 0) G.boardShake *= 0.76;
+    if (G.boardShake > 0) G.boardShake = Math.max(0, G.boardShake * 0.92 - 0.4);
     if (G.tubeHintFlash > 0) G.tubeHintFlash -= 0.05;
     if (G.screen !== 'PLAYING') return;
 
@@ -490,12 +488,6 @@ function isInsideTubeHitbox(bx, by) {
       return;
     }
 
-    // 浮世絵絵双六（第六場景）は旧盤面のホバー判定を行わない
-    if (G.eraIdx === 5) {
-      canvas.style.cursor = 'default';
-      return;
-    }
-
     if (G.phase === 'WAIT_ROLL' && G.turn === G.humanSide) {
       G.tube.hovering = isInsideTubeHitbox(p.x, p.y);
       canvas.style.cursor = G.tube.hovering ? 'grab' : 'default';
@@ -542,23 +534,17 @@ function isInsideTubeHitbox(bx, by) {
     G.pointerX = p.x;
     G.pointerY = p.y;
 
-    // 第六場景の常設ボタン（新局・時代替）は、選辺・対局・決算の
-    // どの画面状態でも最優先で反応させる。
-    if (G.eraIdx === 5 && G.screen !== 'SELECT_ERA') {
-      if (isInsideRect(p.x, p.y, CHANGE_ERA_BTN)) {
-        playStoneLift();
+    // Bottom-right 新局 / 時代替 are always top-priority for every era and every
+    // screen (SELECT_ERA / SIDE_SELECT / PLAYING / SETTLEMENT): no freeze.
+    const priorityHit = hitTestScene(p.x, p.y);
+    if (priorityHit && (priorityHit.type === 'reset' || priorityHit.type === 'change_era')) {
+      playStoneLift();
+      if (priorityHit.type === 'reset') {
+        G.screen = 'SELECT_COLOR';
+      } else {
         G.screen = 'SELECT_ERA';
-        return;
       }
-      if (isInsideRect(p.x, p.y, NEW_GAME_BTN)) {
-        playStoneLift();
-        if (G.screen === 'SELECT_COLOR') {
-          initEdoEsugorokuMatch();
-        } else {
-          G.screen = 'SELECT_COLOR';
-        }
-        return;
-      }
+      return;
     }
 
     if (G.screen === 'SELECT_ERA') {
@@ -609,13 +595,6 @@ function isInsideTubeHitbox(bx, by) {
         G.screen = 'SELECT_ERA';
         return;
       }
-      return;
-    }
-
-    // 浮世絵絵双六（第六場景）の対局中入力
-    if (G.eraIdx === 5) {
-      if (G.screen !== 'PLAYING') return;
-      handleEdoEsugorokuPointerDown(p.x, p.y);
       return;
     }
 
@@ -671,13 +650,6 @@ function isInsideTubeHitbox(bx, by) {
   });
 
   window.addEventListener('pointerup', () => {
-    if (G.eraIdx === 5) {
-      if (G.screen === 'PLAYING' && G.phase !== 'SETTLEMENT') {
-        handleEdoEsugorokuPointerUp();
-      }
-      canvas.style.cursor = 'default';
-      return;
-    }
     if (G.phase === 'PLAYER_HOLD_TUBE') {
       releasePlayerTube();
       canvas.style.cursor = 'default';
@@ -688,20 +660,6 @@ function isInsideTubeHitbox(bx, by) {
     document.fonts.ready.then(() => render());
   }
 
-  function updateFrame(dt) {
-    if (G.eraIdx === 5) {
-      // 浮世絵絵双六は専用更新のみ。旧盤双六の物理・AIは一切動かさない。
-      G.pulseTick += 0.08;
-      if (G.boardShake > 0) G.boardShake *= 0.76;
-      if (G.screen === 'PLAYING' && G.phase !== 'SETTLEMENT') {
-        updateEdoEsugoroku(dt);
-      }
-      if (G.stamp && G.stamp.alpha > 0) G.stamp.alpha -= 0.017;
-      return;
-    }
-    updatePhysics();
-  }
-
   let lastFrameTime = (typeof performance !== 'undefined') ? performance.now() : Date.now();
   function loop(now) {
     const t = (typeof now === 'number')
@@ -709,7 +667,7 @@ function isInsideTubeHitbox(bx, by) {
       : ((typeof performance !== 'undefined') ? performance.now() : Date.now());
     const dt = Math.min(0.1, Math.max(0, (t - lastFrameTime) / 1000));
     lastFrameTime = t;
-    updateFrame(dt);
+    updatePhysics();
     render();
     requestAnimationFrame(loop);
   }

@@ -1,4 +1,3 @@
-import { renderEdoEsugoroku } from './ukiyoe_esugoroku.js';
 import { KANJI } from './eras.js';
 import { canvas, ctx, W, H, scale, offsetX, offsetY, FONT_BRUSH, FONT_MINCHO, NEW_GAME_BTN, CHANGE_ERA_BTN, G, currentEra, B, getLaneGeom, getStoneSlotXY, getTargetSealXY, drawMakiEText } from './state.js';
 import { SugorokuCore } from './core.js';
@@ -9,24 +8,14 @@ export function render() {
     ctx.fillStyle = '#090503';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const shakeDX = (Math.random() - 0.5) * G.boardShake;
-    const shakeDY = (Math.random() - 0.5) * G.boardShake;
-    ctx.translate(offsetX + shakeDX * scale, offsetY + shakeDY * scale);
+    // 4. 大幅強化された「振動桌子」エフェクト
+    ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
 
-    // Era selection screen always renders the era select screen
     if (G.screen === 'SELECT_ERA') {
       renderEraSelectScreen();
       ctx.restore();
-      return;
-    }
-
-    // For eraIdx === 5 (江戸浮世絵絵双六), render the ukiyoe board for all non-ERA_SELECT phases
-    if (G.eraIdx === 5) {
-      renderEdoEsugoroku();
-      if (G.screen === 'SELECT_COLOR') renderSideSelectOverlay();
-      if (G.phase === 'SETTLEMENT') renderSettlementOverlay();
-      ctx.restore();
+      renderShockwaves();
       return;
     }
 
@@ -39,6 +28,11 @@ export function render() {
     roomGlow.addColorStop(1, mode.theme.roomGlow[1]);
     ctx.fillStyle = roomGlow;
     ctx.fillRect(0, 0, W, H);
+
+    // Board content group: shake/rotate/squash only affects the wood board,
+    // not the stable UI layer drawn afterwards.
+    ctx.save();
+    applyBoardShake();
 
     drawEraMatAndSurroundings(mode, b);
 
@@ -151,18 +145,25 @@ export function render() {
     // 10. 時代別の振筒と賽
     drawEraShakerAndDice(mode);
 
+    // 10.5. 時代別家紋・浮世绘装飾
+    drawEraKamon(mode, b);
+
+    ctx.restore(); // -- board group end: UI below stays upright --
+
     // 11. 木札と算木札
     drawWoodPlaquesAndCounters(mode, b);
 
     // 12. 朱印スタンプ
     if (G.stamp && G.stamp.alpha > 0) drawCalloutStamp(b);
 
+    // 13. サイドオーバーレイ（選辺・結算）
     if (G.screen === 'SELECT_COLOR') {
       renderSideSelectOverlay();
     } else if (G.phase === 'SETTLEMENT') {
       renderSettlementOverlay();
     }
 
+    renderShockwaves();
     ctx.restore();
   }
 
@@ -929,12 +930,61 @@ export function drawDimpledStone(x, y, r, player, canMove, isSelected) {
 
   function drawSideTallyPlaque(x, y, title, countStr, player, roleTag, isOte) {
     const w = 104, h = 166;
+    const mode = currentEra();
+    const b = mode.geom;
     ctx.save();
-    ctx.fillStyle = 'rgba(18, 10, 5, 0.92)';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = isOte ? '#ff5938' : (player === G.humanSide ? '#d4a64a' : '#755624');
-    ctx.lineWidth = isOte ? 2.6 : (player === G.humanSide ? 2.0 : 1.4);
-    ctx.strokeRect(x, y, w, h);
+
+    if (b.style === 'momoyama') {
+      // 戦国大鎧・金碧軍配木札
+      const g = ctx.createLinearGradient(x, y, x, y + h);
+      g.addColorStop(0, '#110905');
+      g.addColorStop(0.5, '#2b1408');
+      g.addColorStop(1, '#0d0603');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#f5c442';
+      ctx.lineWidth = isOte ? 2.8 : (player === G.humanSide ? 2.2 : 1.6);
+      ctx.strokeRect(x, y, w, h);
+      // 金属錺金具
+      ctx.fillStyle = '#b08724';
+      ctx.fillRect(x - 8, y + 10, 6, h - 28);
+      ctx.fillRect(x + w + 2, y + 10, 6, h - 28);
+      ctx.fillRect(x + w / 2 - 8, y - 8, 16, 6);
+      // 頂部家紋
+      const kType = player === 0 ? 'takeda_bishi' : 'oda_mokko';
+      drawSengokuKamon(ctx, x + w / 2, y + 44, 16, kType);
+      // 甲胄威毛段ノ桜
+      ctx.strokeStyle = '#ff3e2c';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x, y + h / 2);
+      ctx.bezierCurveTo(x + w / 2, y + 34, x + w / 2, y + 50, x + w, y + h / 2);
+      ctx.stroke();
+    } else if (b.style === 'chonin') {
+      // 浮世絵錦絵短冊 + 朱漆金蒔絵櫛箱
+      const g = ctx.createLinearGradient(x, y, x, y + h);
+      g.addColorStop(0, '#fff6e6');
+      g.addColorStop(0.5, '#f0e2c9');
+      g.addColorStop(1, '#e6d1ae');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#c93722';
+      ctx.lineWidth = isOte ? 2.7 : (player === G.humanSide ? 2.0 : 1.4);
+      ctx.strokeRect(x, y, w, h);
+      // 朱印ぼかし
+      ctx.fillStyle = 'rgba(203, 46, 18, 0.32)';
+      ctx.fillRect(x, y, w, 22);
+      ctx.fillStyle = '#1a120d';
+      ctx.font = `800 11px ${FONT_BRUSH}`;
+      ctx.textAlign = 'center';
+      ctx.fillText('浮世絵', x + w / 2, y + 13);
+    } else {
+      ctx.fillStyle = 'rgba(18, 10, 5, 0.92)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = isOte ? '#ff5938' : (player === G.humanSide ? '#d4a64a' : '#755624');
+      ctx.lineWidth = isOte ? 2.6 : (player === G.humanSide ? 2.0 : 1.4);
+      ctx.strokeRect(x, y, w, h);
+    }
 
     drawDimpledStone(x + w / 2, y + 26, 12, player, false, false);
     drawMakiEText(roleTag, x + w / 2, y + 54, 13.5, 'center', false, 0.88);
@@ -974,4 +1024,214 @@ export function drawDimpledStone(x, y, r, player, canMove, isSelected) {
       drawMakiEText(s.sub, x + w / 2, y + 64, 14.5, 'center', false, a * 0.92);
     }
     ctx.restore();
+  }
+  // ==================== 振動桶子·家紋·浮世图装饰 ====================
+  const SHOCK_RINGS = 3;
+
+  function applyBoardShake() {
+    const mag = G.boardShake;
+    if (!mag || mag <= 0) return;
+    const t = G.pulseTick * 6.2831853;
+    const f1 = Math.sin(t * 1.31 + 0.5);
+    const f2 = Math.sin(t * 2.21 - 0.4);
+    const f3 = Math.cos(t * 3.73 + 1.1);
+    const amp = Math.min(42, 16 + mag * 0.65);
+    const dx = (f1 * 0.6 + f2 * 0.4 + f3 * 0.3) * amp;
+    const dy = (Math.sin(t * 2.65) * 0.5) * amp * 0.6;
+    const rotMag = Math.min(2.8, mag * 0.032);
+    const rot = rotMag * f1 * 0.5;
+    const squash = 1 + Math.min(0.04, mag * 0.0018) * f2 * 0.6;
+    ctx.translate(dx, dy);
+    ctx.rotate(rot);
+    if (Math.abs(squash - 1) > 0.0001) ctx.scale(squash, 1 / squash);
+  }
+
+  function renderShockwaves() {
+    if (G.shockwaves.length === 0 && G.dust.length === 0) return;
+    ctx.save();
+    // shockwaves + dust live in device (canvas) space, not board space.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const cx = (typeof scale === 'number') ? scale : 1;
+    const ox = (typeof offsetX === 'number') ? offsetX : 0;
+    const oy = (typeof offsetY === 'number') ? offsetY : 0;
+    const toDev = (bx, by) => ({
+      x: ox + bx * cx,
+      y: oy + by * cx
+    });
+
+    const now = G.pulseTick;
+    const keptSw = [];
+    G.shockwaves.forEach(sw => {
+      sw.t += 0.016;
+      const life = sw.t / sw.life;
+      if (life >= 1) return;
+      const dev = toDev(sw.x, sw.y);
+      const radius = (14 + life * 96) * sw.intensity;
+      const rings = SHOCK_RINGS;
+      for (let i = 0; i < rings; i++) {
+        const rt = (life * rings - i);
+        if (rt < 0 || rt > 1) continue;
+        const alpha = (1 - rt) * 0.38 * sw.intensity * (i === 0 ? 1 : 0.55);
+        ctx.beginPath();
+        ctx.arc(dev.x, dev.y, radius * rt, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(245, 208, 113, ${alpha})`;
+        ctx.lineWidth = 1.6 * (1 - rt) + 0.6;
+        ctx.stroke();
+      }
+      keptSw.push(sw);
+    });
+    G.shockwaves = keptSw;
+
+    const keptDust = [];
+    ctx.fillStyle = '#c99b3b';
+    G.dust.forEach(d => {
+      d.t += 0.016;
+      const life = d.t / d.life;
+      if (life >= 1) return;
+      d.x += d.vx; d.y += d.vy;
+      const dev = toDev(d.x, d.y);
+      ctx.globalAlpha = (1 - life) * 0.78;
+      ctx.beginPath();
+      ctx.arc(dev.x, dev.y, 1.6 + (1 - life) * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      keptDust.push(d);
+    });
+    G.dust = keptDust;
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // 戦國家紋ベクター描画
+  function drawSengokuKamon(ctx, x, y, r, type) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = '#f5c442';
+    ctx.strokeStyle = '#b08724';
+    ctx.lineWidth = r * 0.14;
+
+    if (type === 'takeda_bishi') {
+      // 武田菱：4 枚平行四辺形菱形
+      ctx.save();
+      ctx.rotate(Math.PI / 4);
+      const w = r * 0.8, h = r * 0.32;
+      for (let i = -1; i <= 1; i += 2) {
+        ctx.fillStyle = i === -1 ? '#f5c442' : '#e6b800';
+        ctx.fillRect(-w / 2, i * h / 2 - h / 2, w, h);
+      }
+      ctx.restore();
+    } else if (type === 'sanada_rokumonsen') {
+      // 真田六文銭：2×3 の古銭網
+      const cols = 2, rows = 3;
+      const pad = r * 0.18;
+      const cr = r * 0.11;
+      for (let c = 0; c < cols; c++) {
+        for (let rr = 0; rr < rows; rr++) {
+          const px = -r * 0.35 + c * (r * 0.35);
+          const py = -r * 0.42 + rr * (r * 0.21);
+          ctx.fillStyle = '#c9a35b';
+          ctx.beginPath(); ctx.arc(px + cr, py + cr, cr, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#7a5f2c';
+          ctx.beginPath(); ctx.arc(px, py, cr, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#7a5f2c'; ctx.lineWidth = 1; ctx.stroke();
+        }
+      }
+    } else if (type === 'oda_mokko') {
+      // 織田木瓜：5 弁の筑摩付き芍薬
+      const petals = 5;
+      ctx.save();
+      ctx.rotate(-Math.PI / 2);
+      for (let i = 0; i < petals; i++) {
+        ctx.save();
+        ctx.rotate((Math.PI * 2 / petals) * i);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.bezierCurveTo(-r * 0.18, -r * 0.52, r * 0.18, -r * 0.52, 0, -r * 0.58);
+        ctx.lineTo(0, -r * 0.32);
+        ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+    } else if (type === 'maru3hana') {
+      // 丸に三つ葉葥：三葉ずきの中心円
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.38, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#f5d28a';
+      ctx.lineWidth = r * 0.09;
+      for (let i = 0; i < 3; i++) {
+        ctx.save();
+        ctx.rotate((Math.PI * 2 / 3) * i);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -r * 0.66);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawEraKamon(mode, b) {
+    const laneH = (b.h - b.midH) / 2;
+    const cx = b.x + b.w / 2;
+    const midTopY = b.y + laneH;
+    const midBotY = midTopY + b.midH;
+
+    if (b.style === 'momoyama') {
+      // 大陛中央·家紋 + 左右上下がり盆 + 角錺金具
+      const big = 46;
+      drawSengokuKamon(ctx, cx, b.y + 46, big, 'takeda_bishi');
+      drawSengokuKamon(ctx, cx, b.y + b.h - 46, big, 'oda_mokko');
+      if (b.hasTray) {
+        drawSengokuKamon(ctx, b.trayX - 8, b.y + 110, 30, 'sanada_rokumonsen');
+        drawSengokuKamon(ctx, b.trayX - 8, b.y + b.h - 130, 30, 'maru3hana');
+      }
+      // 中央 midH 棒線上の家紋
+      drawSengokuKamon(ctx, cx - 96, midTopY + b.midH / 2, 34, 'takeda_bishi');
+      drawSengokuKamon(ctx, cx + 96, midBotY - b.midH / 3, 34, 'oda_mokko');
+      // 四隅錺金具の微小家紋
+      const small = 10;
+      [
+        [b.x + 14, b.y + 14],
+        [b.x + b.w - 14, b.y + 14],
+        [b.x + 14, b.y + b.h - 14],
+        [b.x + b.w - 14, b.y + b.h - 14]
+      ].forEach(([px, py]) => {
+        ctx.fillStyle = '#2b1406';
+        ctx.fillRect(px - 9, py - 9, 18, 18);
+        ctx.strokeStyle = '#b08724';
+        ctx.lineWidth = 1.3;
+        ctx.strokeRect(px - 9, py - 9, 18, 18);
+        drawSengokuKamon(ctx, px, py, small, 'takeda_bishi');
+      });
+    } else if (b.style === 'chonin') {
+      // 江戸閨房·浮世绘：飄落つ桜弁と浮世绘美人剪影
+      ctx.save();
+      ctx.fillStyle = 'rgba(242, 200, 95, 0.09)';
+      for (let i = 0; i < 28; i++) {
+        const px = b.x + ((i * 37 + Math.floor(G.pulseTick * 9)) % b.w);
+        const py = b.y + 12 + (i % 3) * 18;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.bezierCurveTo(px - 3, py + 4, px + 5, py + 2, px + 2, py + 9);
+        ctx.bezierCurveTo(px + 6, py + 3, px + 9, py + 8, px + 12, py + 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // 壁面浮世绘屏風
+      ctx.save();
+      const fxFan = b.x - 90;
+      const fyFan = b.y + 48;
+      ctx.strokeStyle = '#2a1210';
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(fxFan, fyFan, 26, 230);
+      ctx.fillStyle = '#e3d3bf';
+      ctx.fillRect(fxFan, fyFan, 26, 36);
+      ctx.strokeStyle = '#c93722';
+      ctx.lineWidth = 1.3;
+      // 高嶺発髻·花冠剪影
+      ctx.beginPath(); ctx.arc(fxFan + 13, fyFan + 16, 4, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#5d3a36';
+      ctx.fillRect(fxFan + 5, fyFan + 38, 16, 46);
+      ctx.restore();
+    }
   }

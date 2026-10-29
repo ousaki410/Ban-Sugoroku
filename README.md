@@ -102,10 +102,13 @@ python3 tools/verify_all.py --browser
 `tools/test_browser_e2e.py` drives the real canvas UI in headless Chromium. It
 uses a local HTTP server and real pointer events to start a game, roll dice,
 move stones, capture, enter from the bar, and complete bear-off for both colors.
-The `edo_ukiyoe_flow` scenario also verifies era 6: the ukiyoe sheet replaces
-the legacy board, the 24-card album opens and closes, the bamboo tube moves the
-koma, and both settlement buttons and the bottom-right era button respond.
-It also checks JavaScript errors and stone-count invariants.
+The `edo_oimawashi_flow` scenario verifies era 6 (江戸閨房・浮世絵 oimawashi):
+the restored standard 3D wooden board renders in the dark chonin felt, a
+deterministic double-four (Math.random injected = 0.5) drives a legal koma hop
+under the exaggerated desk-shake, the bottom-right 新局 / 時代替 buttons respond
+at every screen (side-select / play / settlement), and the settlement overlay's
+single rematch button (再戦する) restarts the match while the era-button exits
+back to the era menu. It also checks JavaScript errors and stone-count invariants.
 
 Prerequisites:
 

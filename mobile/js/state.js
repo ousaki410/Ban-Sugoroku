@@ -69,8 +69,26 @@ export const G = {
     ],
     flyingStone: null,
     stamp: null,
-    statusText: ''
+    statusText: '',
+    shockwaves: [],
+    dust: []
   };
+
+export function spawnShockwave(boardX, boardY, mag = 1) {
+  const intensity = Math.max(0.3, Math.min(1, mag));
+  G.shockwaves.push({ x: boardX, y: boardY, intensity, t: 0, life: 0.55 + intensity * 0.35 });
+  const count = Math.floor(18 + intensity * 14);
+  const base = Math.max(10, mag);
+  for (let i = 0; i < count; i++) {
+    const a = (Math.PI * 2 * i) / count + (Math.PI / count) * (Math.random() - 0.5);
+    const speed = 0.6 + Math.random() * 2.2 * base;
+    G.dust.push({
+      x: boardX, y: boardY,
+      vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+      life: 0.45 + Math.random() * 0.25, t: 0
+    });
+  }
+}
 
 export function B() {
     return currentEra().geom;

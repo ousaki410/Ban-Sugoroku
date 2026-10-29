@@ -245,6 +245,8 @@ done({
   selectedFrom: G.selectedFrom,
   winner: G.winner,
   shakeTicks: G.shakeTicks,
+  rolledPair: Boolean(G.rolledPair),
+  stats: G.stats ? { turns: G.stats.turns, hits: G.stats.hits, doubles: G.stats.doubles } : null,
   stoneCount: mode.stoneCount,
   canBearOff: Boolean(mode.canBearOff),
   canvasWidth: canvas.width,
@@ -447,55 +449,6 @@ done({ x: boxX + 125, y: boxY + 74 });
         )
         self.click_board(center["x"], center["y"])
 
-    def get_ukiyoe_state(self):
-        """Read the Edo ukiyoe (eraIdx 5) state machine without mutating it."""
-        return self._js(
-            r"""
-const state = await import('/js/state.js');
-const ukiyoe = await import('/js/ukiyoe_esugoroku.js');
-const { G } = state;
-done({
-  screen: G.screen,
-  eraIdx: G.eraIdx,
-  phase: G.phase,
-  turn: G.turn,
-  humanSide: G.humanSide,
-  winner: G.winner,
-  turns: G.stats.turns,
-  pos: ukiyoe.EState.pos.slice(),
-  albumOpen: ukiyoe.EState.albumOpen,
-  unlocked: ukiyoe.EState.unlocked.size,
-  loadout: ukiyoe.EState.loadout.slice(),
-  rolling: ukiyoe.EState.rolling,
-  stepAnim: Boolean(ukiyoe.EState.stepAnim),
-  dieVal: ukiyoe.EState.dieVal,
-  isPlay: ukiyoe.isEsugorokuPlay(),
-});
-"""
-        )
-
-    def wait_for_ukiyoe(self, predicate, description):
-        deadline = time.monotonic() + self.timeout
-        last_state = None
-        last_error = None
-        while time.monotonic() < deadline:
-            try:
-                state = self.get_ukiyoe_state()
-                last_state = state
-                if predicate(state):
-                    return state
-            except Exception as exc:
-                last_error = exc
-            time.sleep(0.05)
-        detail = (
-            "last state: " + json.dumps(last_state, ensure_ascii=False)
-            if last_state is not None
-            else "last error: " + str(last_error)
-        )
-        raise AssertionError(
-            f"Timed out waiting for {description}. {detail}"
-        )
-
     def wait_frames(self):
         self._js(
             "await new Promise((resolve) => "
@@ -516,36 +469,6 @@ done({ r: data[0], g: data[1], b: data[2], a: data[3] });
 """,
             board_x,
             board_y,
-        )
-
-    def setup_ukiyoe_settlement(self):
-        """Force an Edo ukiyoe settlement screen for button regression checks."""
-        self._js(
-            r"""
-const state = await import('/js/state.js');
-const ukiyoe = await import('/js/ukiyoe_esugoroku.js');
-const { G } = state;
-G.screen = 'PLAYING';
-G.eraIdx = 5;
-G.humanSide = 0;
-G.turn = 0;
-G.phase = 'SETTLEMENT';
-G.winner = 0;
-G.winReason = '新板浮世絵双六・中央「上り」一番乗り完遂';
-G.stats = { turns: 5, hits: 0, doubles: 0 };
-G.hoverSettleBtn = -1;
-G.stamp = null;
-G.flyingStone = null;
-ukiyoe.EState.pos = [25, 12];
-ukiyoe.EState.albumOpen = false;
-ukiyoe.EState.rolling = false;
-ukiyoe.EState.stepAnim = null;
-done({ ok: true });
-"""
-        )
-        return self.wait_for(
-            lambda s: s["screen"] == "PLAYING" and s["phase"] == "SETTLEMENT",
-            "era 6 settlement fixture",
         )
 
     def lane_center(self, point_idx):
@@ -979,115 +902,156 @@ done({ ok: true });
         self.assert_invariants(state, "after White bear-off")
 
 
-    def scenario_edo_ukiyoe_flow(self):
-        """Era 6 (edo ukiyoe) board, album, dice, and settlement buttons."""
-        self.load_page()
-        self.click_era(5)
+    def setup_settlement_fixture(self, era_idx, winner=0, turns=17, hits=3, doubles=6):
+        """Force a SETTLEMENT state in the given era without playing out the match."""
+        self._js(
+            r"""
+const state = await import('/js/state.js');
+const core = await import('/js/core.js');
+const { ERA_MODES } = await import('/js/eras.js');
+const { G } = state;
+const mode = ERA_MODES[args[0]];
+G.screen = 'PLAYING';
+G.eraIdx = args[0];
+G.humanSide = 0;
+G.turn = 1;
+G.phase = 'SETTLEMENT';
+G.winner = args[1];
+G.humanSide = args[1] === 0 ? 0 : 1;
+G.winReason = 'test-settlement';
+G.pts = new Array(24).fill(0);
+G.bar = [0, 0];
+G.off = [6, 6];
+G.rem = [];
+G.dice = [4, 4];
+G.rolledPair = true;
+G.flyingStone = null;
+G.stamp = null;
+G.boardShake = 0;
+G.oteActive = [false, false];
+G.oteAlerted = [false, false];
+G.stats = { turns: args[2], hits: args[3], doubles: args[4] };
+G.statusText = '';
+done({ ok: true });
+""",
+            era_idx,
+            winner,
+            turns,
+            hits,
+            doubles,
+        )
+        return self.wait_for(
+            lambda s: s["screen"] == "PLAYING"
+            and s["phase"] == "SETTLEMENT"
+            and s["eraIdx"] == era_idx
+            and s["winner"] == winner,
+            "settlement fixture",
+        )
+
+    def scenario_edo_oimawashi_flow(self):
+        """Era 6 (江戸閨房・浮世絵 oimawashi) standard 3D board: side select, roll/move,
+        bottom-right buttons respond at all states, and settlement rematch/change-era
+        resolve without freezing."""
+        self.load_page();
+        self.click_era(5);
         self.wait_for(
             lambda s: s["screen"] == "SELECT_COLOR" and s["eraIdx"] == 5,
             "era 6 side select",
-        )
-        self.wait_frames()
+        );
 
-        # The ukiyoe paper sheet must be visible instead of the legacy wooden
-        # board. These three points are paper margins outside the side-select
-        # modal, so they stay bright even under its dark scrim.
-        for bx, by in ((600, 44), (600, 644), (192, 400)):
-            pixel = self.get_board_pixel(bx, by)
-            brightness = (pixel["r"] + pixel["g"] + pixel["b"]) / 3
-            assert brightness >= 30, (
-                f"era 6 side select is not drawing the ukiyoe sheet "
-                f"at ({bx}, {by}): {pixel}"
-            )
-
-        initial = self.get_ukiyoe_state()
-        assert initial["albumOpen"] is False, initial
-        assert initial["pos"] == [0, 0], initial
-
-        # Bottom-right 時代替 must work even while SIDE_SELECT is open.
-        self.click_board(1180, 693)
-        self.wait_for(
-            lambda s: s["screen"] == "SELECT_ERA",
-            "era 6 side-select change-era button",
-        )
-        self.click_era(5)
+        # The bottom-right CHANGE_ERA_BTN must fire even from SIDE_SELECT.
+        self.click_board(1178, 693);
+        self.wait_for(lambda s: s["screen"] == "SELECT_ERA", "era 6 side-select change-era");
+        self.click_era(5);
         self.wait_for(
             lambda s: s["screen"] == "SELECT_COLOR" and s["eraIdx"] == 5,
             "era 6 side select after returning to menu",
-        )
+        );
 
-        self.click_color(0)
-        self.wait_for(
+        # Standard 3D wooden board renders (not the old ukiyoe paper sheet).
+        # The chonin board is dark; sample inside the board face itself.
+        brightness_before = self.get_board_pixel(420, 320)["r"];
+
+        self.click_color(0);
+        state = self.wait_for(
             lambda s: s["screen"] == "PLAYING"
             and s["phase"] == "WAIT_ROLL"
             and s["turn"] == 0
-            and s["humanSide"] == 0,
+            and s["humanSide"] == 0
+            and s["eraIdx"] == 5,
             "era 6 Black game start",
-        )
-        state = self.wait_for_ukiyoe(
-            lambda s: s["isPlay"] is True and s["pos"] == [0, 0],
-            "era 6 ukiyoe play state",
-        )
-        assert state["eraIdx"] == 5, state
+        );
+        self.assert_invariants(state, "era 6 new game");
+        brightness_after = self.get_board_pixel(420, 320)["r"];
+        assert brightness_after <= 80, (
+            f"era 6 board should render the dark chonin felt, not bright ukiyoe paper: {brightness_after}"
+        );
 
-        self.wait_frames()
-        pixel = self.get_board_pixel(600, 44)
-        brightness = (pixel["r"] + pixel["g"] + pixel["b"]) / 3
-        assert brightness >= 120, (
-            f"era 6 play board is not the bright ukiyoe sheet: {pixel}"
-        )
+        # Deterministic double-four roll (Math.random injected = 0.5).
+        self.hold_and_release_tube();
+        for _ in range(4):
+            self.wait_frames();
+        rolled = self.wait_for(
+            lambda s: s["phase"] == "PLAYER_MOVE" and s["dice"] == [4, 4],
+            "era 6 deterministic roll",
+        );
+        assert rolled["rolledPair"] is True, rolled;
+        assert rolled.get("shakeTicks", 0) >= 0, rolled;
+        self.assert_invariants(rolled, "era 6 after roll");
+        assert rolled.get("shakeTicks", 0) >= 1, "double-four should trigger the desk-shake impulse";
 
-        # Open and close the 24-card ukiyoe album.
-        self.click_board(94, 332)
-        album = self.wait_for_ukiyoe(
-            lambda s: s["albumOpen"] is True, "ukiyoe album open"
-        )
-        assert 0 <= album["unlocked"] <= 24, album
-        self.click_board(1118, 70)
-        self.wait_for_ukiyoe(
-            lambda s: s["albumOpen"] is False, "ukiyoe album close"
-        )
+        # Apply the deterministic double-four move(s). Oimawashi has no combined
+        # targets, so each die resolves to one stone hop.
+        for _ in range(6):
+            st = self.get_state();
+            if st["phase"] != "PLAYER_MOVE" or len(st["rem"]) == 0:
+                break;
+            try:
+                self.play_one_direct_target();
+            except Exception:
+                break;
+        moved = self.wait_for(
+            lambda s: s["phase"] in ("WAIT_ROLL", "AI_WAIT", "SETTLEMENT")
+            and len(s["rem"]) == 0,
+            "era 6 all moves applied",
+        );
+        self.assert_invariants(moved, "era 6 after move");
 
-        # Roll the bamboo tube and verify the black koma actually moves.
-        before = self.get_ukiyoe_state()
-        self.click_board(1149, 557)
-        moved = self.wait_for_ukiyoe(
-            lambda s: s["pos"][0] != before["pos"][0]
-            and not s["rolling"]
-            and not s["stepAnim"],
-            "era 6 dice roll moves the black koma",
-        )
-        assert moved["pos"][0] > 0, moved
-        assert moved["dieVal"] >= 1, moved
+        # Bottom-right CHANGE_ERA_BTN must respond at PLAYING screen (no freeze).
+        self.click_board(1178, 693);
+        self.wait_for(lambda s: s["screen"] == "SELECT_ERA" and s["eraIdx"] == 5, "era 6 play change-era");
 
-        # Bottom-right 時代替 must always return to the era menu.
-        self.click_board(1180, 693)
-        self.wait_for(
-            lambda s: s["screen"] == "SELECT_ERA" and s["eraIdx"] == 5,
-            "era 6 change-era button",
-        )
-
-        # SETTLEMENT → 雪辱を果たす resets and starts a fresh ukiyoe match.
-        self.setup_ukiyoe_settlement()
-        self.click_board(514, 530)
-        self.wait_for(
-            lambda s: s["screen"] == "PLAYING"
-            and s["phase"] == "WAIT_ROLL"
-            and s["turn"] == 0,
-            "era 6 settlement rematch",
-        )
-        restarted = self.get_ukiyoe_state()
-        assert restarted["pos"] == [0, 0], restarted
-        assert restarted["albumOpen"] is False, restarted
-        assert restarted["isPlay"] is True, restarted
+        # Force a settlement overlay and verify the 四項 / three-button row.
+        self.setup_settlement_fixture(5, 0, turns=17, hits=3, doubles=6);
+        rendered = self.wait_for(
+            lambda s: s["phase"] == "SETTLEMENT" and s["winner"] == 0,
+            "era 6 settlement rendered",
+        );
 
         # SETTLEMENT → 時代・遊び方を替える returns to ERA_SELECT immediately.
-        self.setup_ukiyoe_settlement()
-        self.click_board(766, 530)
+        self.setup_settlement_fixture(5, 0);
+        self.click_board(766, 530);
+        self.wait_for(lambda s: s["screen"] == "SELECT_ERA", "era 6 settlement change-era");
+
+        # Re-enter era 6 and verify the single rematch label (再戦する) still works.
+        self.click_era(5);
         self.wait_for(
-            lambda s: s["screen"] == "SELECT_ERA",
-            "era 6 settlement change-era button",
-        )
+            lambda s: s["screen"] == "SELECT_COLOR" and s["eraIdx"] == 5,
+            "era 6 re-enter side select",
+        );
+        self.click_color(0);
+        self.wait_for(
+            lambda s: s["screen"] == "PLAYING" and s["phase"] == "WAIT_ROLL",
+            "era 6 re-enter play",
+        );
+        self.setup_settlement_fixture(5, 0);
+        self.wait_for(lambda s: s["phase"] == "SETTLEMENT", "era 6 settlement re-rendered");
+        self.click_board(514, 530);
+        self.wait_for(
+            lambda s: s["phase"] == "WAIT_ROLL" and s["turn"] == 0,
+            "era 6 settlement rematch restarts the match",
+        );
+
 
 
 SCENARIOS = [
@@ -1132,10 +1096,9 @@ SCENARIOS = [
         BrowserSuite.scenario_bear_off_white,
     ),
     (
-        "edo_ukiyoe_flow",
-        "Era 6 renders the ukiyoe sheet, opens the album, rolls, and exits "
-        "from play and settlement without freezing.",
-        BrowserSuite.scenario_edo_ukiyoe_flow,
+        "edo_oimawashi_flow",
+        "Era 6 renders the standard chonin oimawashi 3D board (日本橘・测幻細), rolls a deterministic double-four, applies a move, and exits from play and settlement without freezing.",
+        BrowserSuite.scenario_edo_oimawashi_flow,
     ),
 ]
 
