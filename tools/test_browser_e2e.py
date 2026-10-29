@@ -447,6 +447,107 @@ done({ x: boxX + 125, y: boxY + 74 });
         )
         self.click_board(center["x"], center["y"])
 
+    def get_ukiyoe_state(self):
+        """Read the Edo ukiyoe (eraIdx 5) state machine without mutating it."""
+        return self._js(
+            r"""
+const state = await import('/js/state.js');
+const ukiyoe = await import('/js/ukiyoe_esugoroku.js');
+const { G } = state;
+done({
+  screen: G.screen,
+  eraIdx: G.eraIdx,
+  phase: G.phase,
+  turn: G.turn,
+  humanSide: G.humanSide,
+  winner: G.winner,
+  turns: G.stats.turns,
+  pos: ukiyoe.EState.pos.slice(),
+  albumOpen: ukiyoe.EState.albumOpen,
+  unlocked: ukiyoe.EState.unlocked.size,
+  loadout: ukiyoe.EState.loadout.slice(),
+  rolling: ukiyoe.EState.rolling,
+  stepAnim: Boolean(ukiyoe.EState.stepAnim),
+  dieVal: ukiyoe.EState.dieVal,
+  isPlay: ukiyoe.isEsugorokuPlay(),
+});
+"""
+        )
+
+    def wait_for_ukiyoe(self, predicate, description):
+        deadline = time.monotonic() + self.timeout
+        last_state = None
+        last_error = None
+        while time.monotonic() < deadline:
+            try:
+                state = self.get_ukiyoe_state()
+                last_state = state
+                if predicate(state):
+                    return state
+            except Exception as exc:
+                last_error = exc
+            time.sleep(0.05)
+        detail = (
+            "last state: " + json.dumps(last_state, ensure_ascii=False)
+            if last_state is not None
+            else "last error: " + str(last_error)
+        )
+        raise AssertionError(
+            f"Timed out waiting for {description}. {detail}"
+        )
+
+    def wait_frames(self):
+        self._js(
+            "await new Promise((resolve) => "
+            "requestAnimationFrame(() => requestAnimationFrame(resolve)));\n"
+            "done({ok: true});"
+        )
+
+    def get_board_pixel(self, board_x, board_y):
+        """Read one canvas pixel using board coordinates (1280x760 space)."""
+        return self._js(
+            r"""
+const state = await import('/js/state.js');
+const { canvas, ctx, scale, offsetX, offsetY } = state;
+const px = Math.round(offsetX + args[0] * scale);
+const py = Math.round(offsetY + args[1] * scale);
+const data = ctx.getImageData(px, py, 1, 1).data;
+done({ r: data[0], g: data[1], b: data[2], a: data[3] });
+""",
+            board_x,
+            board_y,
+        )
+
+    def setup_ukiyoe_settlement(self):
+        """Force an Edo ukiyoe settlement screen for button regression checks."""
+        self._js(
+            r"""
+const state = await import('/js/state.js');
+const ukiyoe = await import('/js/ukiyoe_esugoroku.js');
+const { G } = state;
+G.screen = 'PLAYING';
+G.eraIdx = 5;
+G.humanSide = 0;
+G.turn = 0;
+G.phase = 'SETTLEMENT';
+G.winner = 0;
+G.winReason = '新板浮世絵双六・中央「上り」一番乗り完遂';
+G.stats = { turns: 5, hits: 0, doubles: 0 };
+G.hoverSettleBtn = -1;
+G.stamp = null;
+G.flyingStone = null;
+ukiyoe.EState.pos = [25, 12];
+ukiyoe.EState.albumOpen = false;
+ukiyoe.EState.rolling = false;
+ukiyoe.EState.stepAnim = null;
+done({ ok: true });
+"""
+        )
+        return self.wait_for(
+            lambda s: s["screen"] == "PLAYING" and s["phase"] == "SETTLEMENT",
+            "era 6 settlement fixture",
+        )
+
     def lane_center(self, point_idx):
         return self._js(
             r"""
@@ -878,6 +979,117 @@ done({ ok: true });
         self.assert_invariants(state, "after White bear-off")
 
 
+    def scenario_edo_ukiyoe_flow(self):
+        """Era 6 (edo ukiyoe) board, album, dice, and settlement buttons."""
+        self.load_page()
+        self.click_era(5)
+        self.wait_for(
+            lambda s: s["screen"] == "SELECT_COLOR" and s["eraIdx"] == 5,
+            "era 6 side select",
+        )
+        self.wait_frames()
+
+        # The ukiyoe paper sheet must be visible instead of the legacy wooden
+        # board. These three points are paper margins outside the side-select
+        # modal, so they stay bright even under its dark scrim.
+        for bx, by in ((600, 44), (600, 644), (192, 400)):
+            pixel = self.get_board_pixel(bx, by)
+            brightness = (pixel["r"] + pixel["g"] + pixel["b"]) / 3
+            assert brightness >= 30, (
+                f"era 6 side select is not drawing the ukiyoe sheet "
+                f"at ({bx}, {by}): {pixel}"
+            )
+
+        initial = self.get_ukiyoe_state()
+        assert initial["albumOpen"] is False, initial
+        assert initial["pos"] == [0, 0], initial
+
+        # Bottom-right 時代替 must work even while SIDE_SELECT is open.
+        self.click_board(1180, 693)
+        self.wait_for(
+            lambda s: s["screen"] == "SELECT_ERA",
+            "era 6 side-select change-era button",
+        )
+        self.click_era(5)
+        self.wait_for(
+            lambda s: s["screen"] == "SELECT_COLOR" and s["eraIdx"] == 5,
+            "era 6 side select after returning to menu",
+        )
+
+        self.click_color(0)
+        self.wait_for(
+            lambda s: s["screen"] == "PLAYING"
+            and s["phase"] == "WAIT_ROLL"
+            and s["turn"] == 0
+            and s["humanSide"] == 0,
+            "era 6 Black game start",
+        )
+        state = self.wait_for_ukiyoe(
+            lambda s: s["isPlay"] is True and s["pos"] == [0, 0],
+            "era 6 ukiyoe play state",
+        )
+        assert state["eraIdx"] == 5, state
+
+        self.wait_frames()
+        pixel = self.get_board_pixel(600, 44)
+        brightness = (pixel["r"] + pixel["g"] + pixel["b"]) / 3
+        assert brightness >= 120, (
+            f"era 6 play board is not the bright ukiyoe sheet: {pixel}"
+        )
+
+        # Open and close the 24-card ukiyoe album.
+        self.click_board(94, 332)
+        album = self.wait_for_ukiyoe(
+            lambda s: s["albumOpen"] is True, "ukiyoe album open"
+        )
+        assert 0 <= album["unlocked"] <= 24, album
+        self.click_board(1118, 70)
+        self.wait_for_ukiyoe(
+            lambda s: s["albumOpen"] is False, "ukiyoe album close"
+        )
+
+        # Roll the bamboo tube and verify the black koma actually moves.
+        before = self.get_ukiyoe_state()
+        self.click_board(1149, 557)
+        moved = self.wait_for_ukiyoe(
+            lambda s: s["pos"][0] != before["pos"][0]
+            and not s["rolling"]
+            and not s["stepAnim"],
+            "era 6 dice roll moves the black koma",
+        )
+        assert moved["pos"][0] > 0, moved
+        assert moved["dieVal"] >= 1, moved
+
+        # Bottom-right 時代替 must always return to the era menu.
+        self.click_board(1180, 693)
+        self.wait_for(
+            lambda s: s["screen"] == "SELECT_ERA" and s["eraIdx"] == 5,
+            "era 6 change-era button",
+        )
+
+        # SETTLEMENT → 雪辱を果たす resets and starts a fresh ukiyoe match.
+        self.setup_ukiyoe_settlement()
+        self.click_board(514, 530)
+        self.wait_for(
+            lambda s: s["screen"] == "PLAYING"
+            and s["phase"] == "WAIT_ROLL"
+            and s["turn"] == 0,
+            "era 6 settlement rematch",
+        )
+        restarted = self.get_ukiyoe_state()
+        assert restarted["pos"] == [0, 0], restarted
+        assert restarted["albumOpen"] is False, restarted
+        assert restarted["isPlay"] is True, restarted
+
+        # SETTLEMENT → 時代・遊び方を替える returns to ERA_SELECT immediately.
+        self.setup_ukiyoe_settlement()
+        self.click_board(766, 530)
+        self.wait_for(
+            lambda s: s["screen"] == "SELECT_ERA",
+            "era 6 settlement change-era button",
+        )
+
+
 SCENARIOS = [
     (
         "page_load",
@@ -918,6 +1130,12 @@ SCENARIOS = [
         "bear_off_white",
         "White completes bear-off in Sengoku and reaches settlement.",
         BrowserSuite.scenario_bear_off_white,
+    ),
+    (
+        "edo_ukiyoe_flow",
+        "Era 6 renders the ukiyoe sheet, opens the album, rolls, and exits "
+        "from play and settlement without freezing.",
+        BrowserSuite.scenario_edo_ukiyoe_flow,
     ),
 ]
 

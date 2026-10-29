@@ -2,6 +2,7 @@ import { ERA_MODES, KANJI } from './eras.js';
 import { ctx, W, H, FONT_MINCHO, G, currentEra, drawMakiEText } from './state.js';
 import { SugorokuCore } from './core.js';
 import { drawDimpledStone } from './board_renderer.js';
+import { EState, UKIYOE_CARDS } from './ukiyoe_esugoroku.js';
 
 // ==================== 5. 時代選択屏風・手番選択・時代別実寸盤面・勝敗決済画面 ====================
 export function getEraCardRect(idx) {
@@ -78,7 +79,7 @@ export function renderEraSelectScreen() {
     });
   }
 
-export function renderColorSelectModal() {
+export function renderSideSelectOverlay() {
     const mode = currentEra();
     ctx.save();
     ctx.fillStyle = 'rgba(6, 3, 1, 0.78)';
@@ -95,6 +96,41 @@ export function renderColorSelectModal() {
     ctx.strokeStyle = 'rgba(212, 166, 74, 0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(mx + 6, my + 6, mw - 12, mh - 12);
+
+    // Era 5 (浮世絵絵双六) uses different labels
+    if (G.eraIdx === 5) {
+      drawMakiEText(`${mode.numKanji}・${mode.title}`, W / 2, my + 48, 28, 'center', true);
+      drawMakiEText(`${mode.culture} ｜ ${mode.stoneLabel} ｜ ${mode.boardLabel}`, W / 2, my + 86, 15, 'center', false, 0.9);
+      drawMakiEText('執る駒と手番を撰ばれよ', W / 2, my + 132, 20, 'center', true);
+
+      const boxes = [
+        { side: 0, x: mx + 64, y: my + 164, w: 250, h: 148, title: '黒駒を執る・先手', sub: '黒駒にて「振出し」より出陣' },
+        { side: 1, x: mx + 366, y: my + 164, w: 250, h: 148, title: '白駒を執る・後手', sub: '白駒にて「振出し」より出陣' }
+      ];
+
+      boxes.forEach(bx => {
+        const isHov = (G.hoverColorBtn === bx.side);
+        ctx.fillStyle = isHov ? '#331d0e' : '#211208';
+        ctx.fillRect(bx.x, bx.y, bx.w, bx.h);
+        ctx.strokeStyle = isHov ? '#ffe285' : '#967130';
+        ctx.lineWidth = isHov ? 2.6 : 1.6;
+        ctx.strokeRect(bx.x, bx.y, bx.w, bx.h);
+
+        drawDimpledStone(bx.x + bx.w / 2, bx.y + 46, 24, bx.side, isHov, isHov);
+        drawMakiEText(bx.title, bx.x + bx.w / 2, bx.y + 100, 19, 'center', true);
+        drawMakiEText(bx.sub, bx.x + bx.w / 2, bx.y + 128, 13.5, 'center', false, 0.85);
+      });
+
+      const backHov = (G.hoverColorBtn === 2);
+      ctx.fillStyle = backHov ? '#2e1a0c' : '#1a0e06';
+      ctx.fillRect(W / 2 - 110, my + 332, 220, 38);
+      ctx.strokeStyle = backHov ? '#ffe285' : '#7d5d26';
+      ctx.strokeRect(W / 2 - 110, my + 332, 220, 38);
+      drawMakiEText('◄ 時代・遊び方撰びへ戻る', W / 2, my + 351, 15, 'center', true);
+
+      ctx.restore();
+      return;
+    }
 
     drawMakiEText(`${mode.numKanji}・${mode.title}`, W / 2, my + 48, 28, 'center', true);
     drawMakiEText(`${mode.culture} ｜ ${mode.stoneLabel} ｜ ${mode.boardLabel}`, W / 2, my + 86, 15, 'center', false, 0.9);
@@ -117,6 +153,7 @@ export function renderColorSelectModal() {
       drawMakiEText(bx.title, bx.x + bx.w / 2, bx.y + 100, 19, 'center', true);
       drawMakiEText(bx.sub, bx.x + bx.w / 2, bx.y + 128, 13.5, 'center', false, 0.85);
     });
+
 
     const backHov = (G.hoverColorBtn === 2);
     ctx.fillStyle = backHov ? '#2e1a0c' : '#1a0e06';
@@ -191,6 +228,53 @@ export function renderSettlementOverlay() {
     ctx.fillRect(sx, sy, sw, sh);
     ctx.strokeStyle = isWin ? 'rgba(212, 166, 74, 0.4)' : 'rgba(130, 135, 145, 0.3)';
     ctx.strokeRect(sx, sy, sw, sh);
+
+    // Era 5 (浮世絵絵双六) uses different settlement data
+    if (G.eraIdx === 5) {
+      const sqName = (pos) => {
+        if (pos <= 0) return '振出し';
+        if (pos >= 25) return '上り（二十五ます）';
+        return `${UKIYOE_CARDS[pos - 1].iroha}・${KANJI[pos]}ます`;
+      };
+      const blackSqName = sqName(EState.pos[0]);
+      const whiteSqName = sqName(EState.pos[1]);
+      const collected = EState.unlocked.size;
+
+      const rows = [
+        [`対局手数`, `全 ${KANJI[Math.min(24, G.stats.turns)] || G.stats.turns} 手`],
+        [`黒駒・到達地`, blackSqName],
+        [`白駒・到達地`, whiteSqName],
+        [`浮世絵図鑑・収蔵数`, `${KANJI[collected] || collected} ／ 二十四枚`]
+      ];
+
+      rows.forEach(([k, v], idx) => {
+        const ry = sy + 30 + idx * 35;
+        ctx.fillStyle = '#cbb692';
+        ctx.font = `600 15px ${FONT_MINCHO}`;
+        ctx.textAlign = 'left';
+        ctx.fillText(`◆ ${k}`, sx + 32, ry);
+        drawMakiEText(v, sx + sw - 32, ry, 16.5, 'right', false);
+      });
+
+      // 再戦・時代撰びボタン
+      const btns = [
+        { id: 0, x: px + 96, y: py + 334, w: 216, h: 52, label: '雪辱を果たす' },
+        { id: 1, x: px + 348, y: py + 334, w: 216, h: 52, label: '時代・遊び方を替える' }
+      ];
+
+      btns.forEach(b => {
+        const isHov = (G.hoverSettleBtn === b.id);
+        ctx.fillStyle = isHov ? '#3b210f' : '#211208';
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.strokeStyle = isHov ? '#ffe285' : '#b58d3d';
+        ctx.lineWidth = isHov ? 2.6 : 1.8;
+        ctx.strokeRect(b.x, b.y, b.w, b.h);
+        drawMakiEText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1, 18, 'center', true);
+      });
+
+      ctx.restore();
+      return;
+    }
 
     const bIn = mode.canBearOff || mode.isOimawashi ? G.off[0] : SugorokuCore.countInner(G.pts, 0);
     const wIn = mode.canBearOff || mode.isOimawashi ? G.off[1] : SugorokuCore.countInner(G.pts, 1);

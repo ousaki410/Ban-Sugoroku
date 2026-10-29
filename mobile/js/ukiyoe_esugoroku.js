@@ -283,7 +283,9 @@ const GRID_COORDS = [
 const SHEET = { x: 186, y: 38, w: 836, h: 612, gridX: 198, gridY: 50, gridW: 762, gridH: 588 };
 
 export function isEsugorokuPlay() {
-  return G.eraIdx === 5 && G.phase !== 'ERA_SELECT' && G.phase !== 'SIDE_SELECT' && G.phase !== 'SETTLEMENT';
+  // 実際の状態機は G.screen（SELECT_ERA / SELECT_COLOR / PLAYING）と
+  // G.phase（WAIT_ROLL ... SETTLEMENT）で管理されている。
+  return G.eraIdx === 5 && G.screen === 'PLAYING' && G.phase !== 'SETTLEMENT';
 }
 
 export function getSquareRect(sqIdx) {
@@ -322,6 +324,25 @@ function drawCardUkiyoeArt(ctx, x, y, w, h, card) {
 
   ctx.fillStyle = 'rgba(246, 234, 206, 0.22)';
   ctx.fillRect(x, y + h * 0.58, w, h * 0.18);
+
+  // 木版画のぼかし・紙目・彫り筋を重ねて摺り肌の質感を出す
+  ctx.save();
+  ctx.globalAlpha = 0.16;
+  ctx.fillStyle = '#f8eed8';
+  for (let i = 0; i < 5; i++) {
+    ctx.fillRect(x + 2, y + h * (0.1 + i * 0.075), w - 4, 1.4);
+  }
+  ctx.globalAlpha = 0.1;
+  ctx.strokeStyle = '#1a120c';
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < 7; i++) {
+    const yy = y + h * (0.18 + i * 0.09);
+    ctx.beginPath();
+    ctx.moveTo(x + 4, yy);
+    ctx.lineTo(x + w * 0.68, yy + ((card.id + i) % 2 ? 1.8 : -1.8));
+    ctx.stroke();
+  }
+  ctx.restore();
 
   const cx = x + (w - 28) * 0.48;
   const cy = y + h * 0.52;
@@ -774,24 +795,7 @@ export const BOOST_BTN = { x: 18, y: 366, w: 152, h: 44 };
 export const DICE_TUBE_RECT = { x: 1044, y: 470, w: 210, h: 175 };
 
 export function renderEdoEsugoroku() {
-  // フェーズ遷移の自動検知＆フレームdt更新
-  const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
-  const dt = EState._lastTime ? Math.min(0.1, (now - EState._lastTime) / 1000) : 0.016;
-  EState._lastTime = now;
-
-  if (EState._lastPhase !== G.phase) {
-    if (isEsugorokuPlay()) {
-      initEdoEsugorokuMatch();
-    }
-    EState._lastPhase = G.phase;
-  }
-
-  if (isEsugorokuPlay()) {
-    G.diceRolling = false;
-    G.animStone = null;
-    updateEdoEsugoroku(dt);
-  }
-
+  // 描画専用。状態更新・初期化は main.js の update ループと startMatch が担当する。
   const bgGrad = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, 760);
   bgGrad.addColorStop(0, '#2b2017');
   bgGrad.addColorStop(1, '#0d0906');
@@ -1338,34 +1342,6 @@ export function handleEdoEsugorokuPointerUp() {
   return false;
 }
 
-// ブラウザ環境でキャプチャフェーズのポインタイベントを自動登録
-if (typeof window !== 'undefined') {
-  window.addEventListener('pointerdown', (e) => {
-    if (G.eraIdx !== 5 || !isEsugorokuPlay()) return;
-    const canvasEl = (ctx && ctx.canvas) || document.querySelector('canvas');
-    if (!canvasEl) return;
-    const rect = canvasEl.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const bx = (e.clientX - rect.left) * (W / rect.width);
-    const by = (e.clientY - rect.top) * (H / rect.height);
-
-    if (!EState.albumOpen && isInsideRect(bx, by, NEW_GAME_BTN)) {
-      setTimeout(() => initEdoEsugorokuMatch(), 10);
-      return;
-    }
-    if (!EState.albumOpen && isInsideRect(bx, by, CHANGE_ERA_BTN)) {
-      return;
-    }
-    if (handleEdoEsugorokuPointerDown(bx, by)) {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-    }
-  }, { capture: true });
-
-  window.addEventListener('pointerup', (e) => {
-    if (G.eraIdx !== 5 || !isEsugorokuPlay()) return;
-    if (handleEdoEsugorokuPointerUp()) {
-      e.stopImmediatePropagation();
-    }
-  }, { capture: true });
-}
+// Note: Event handling is now done natively in main.js so the era-select,
+// side-select, settlement, and bottom-right buttons are never blocked by
+// capture-phase listeners. handleEdoEsugorokuPointerDown/Up are called from main.js.

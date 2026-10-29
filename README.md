@@ -102,6 +102,9 @@ python3 tools/verify_all.py --browser
 `tools/test_browser_e2e.py` drives the real canvas UI in headless Chromium. It
 uses a local HTTP server and real pointer events to start a game, roll dice,
 move stones, capture, enter from the bar, and complete bear-off for both colors.
+The `edo_ukiyoe_flow` scenario also verifies era 6: the ukiyoe sheet replaces
+the legacy board, the 24-card album opens and closes, the bamboo tube moves the
+koma, and both settlement buttons and the bottom-right era button respond.
 It also checks JavaScript errors and stone-count invariants.
 
 Prerequisites:

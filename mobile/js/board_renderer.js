@@ -2,10 +2,9 @@ import { renderEdoEsugoroku } from './ukiyoe_esugoroku.js';
 import { KANJI } from './eras.js';
 import { canvas, ctx, W, H, scale, offsetX, offsetY, FONT_BRUSH, FONT_MINCHO, NEW_GAME_BTN, CHANGE_ERA_BTN, G, currentEra, B, getLaneGeom, getStoneSlotXY, getTargetSealXY, drawMakiEText } from './state.js';
 import { SugorokuCore } from './core.js';
-import { renderEraSelectScreen, renderColorSelectModal, renderSettlementOverlay } from './ui_screens.js';
+import { renderEraSelectScreen, renderSideSelectOverlay, renderSettlementOverlay } from './ui_screens.js';
 
 export function render() {
-  
     ctx.save();
     ctx.fillStyle = '#090503';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -15,15 +14,18 @@ export function render() {
     ctx.translate(offsetX + shakeDX * scale, offsetY + shakeDY * scale);
     ctx.scale(scale, scale);
 
+    // Era selection screen always renders the era select screen
     if (G.screen === 'SELECT_ERA') {
-      if (G.eraIdx === 5 && G.phase !== 'ERA_SELECT') {
-      renderEdoEsugoroku();
-      if (G.phase === 'SIDE_SELECT') renderSideSelectOverlay();
-      if (G.phase === 'SETTLEMENT') renderSettlementOverlay();
+      renderEraSelectScreen();
       ctx.restore();
       return;
     }
-    renderEraSelectScreen();
+
+    // For eraIdx === 5 (江戸浮世絵絵双六), render the ukiyoe board for all non-ERA_SELECT phases
+    if (G.eraIdx === 5) {
+      renderEdoEsugoroku();
+      if (G.screen === 'SELECT_COLOR') renderSideSelectOverlay();
+      if (G.phase === 'SETTLEMENT') renderSettlementOverlay();
       ctx.restore();
       return;
     }
@@ -156,7 +158,7 @@ export function render() {
     if (G.stamp && G.stamp.alpha > 0) drawCalloutStamp(b);
 
     if (G.screen === 'SELECT_COLOR') {
-      renderColorSelectModal();
+      renderSideSelectOverlay();
     } else if (G.phase === 'SETTLEMENT') {
       renderSettlementOverlay();
     }
