@@ -93,13 +93,6 @@ function startMatch() {
     const d2 = 1 + Math.floor(Math.random() * 6);
     G.dice = [d1, d2];
     G.rolledPair = (d1 === d2);
-    if (G.rolledPair) {
-      G.boardShake = 36;
-      spawnShockwave(G.tube.baseX, G.tube.baseY, 36);
-    } else {
-      G.boardShake = 14;
-      spawnShockwave(G.tube.baseX, G.tube.baseY, 14);
-    }
     if (G.rolledPair) G.stats.doubles++;
     G.tube.tipped = true;
     playDiceBounce(0.95);
@@ -229,12 +222,12 @@ function startMatch() {
         playStoneImpact(hit);
 
         if (smashedIkka) {
-          G.boardShake = 52;
-          spawnShockwave(tXY.x, tXY.y, 52);
+          G.boardShake = 6;
+          spawnShockwave(tXY.x, tXY.y, 6);
           showStamp('一荷崩し', '敵の二石陣を強襲粉砕せり');
         } else if (hit) {
-          G.boardShake = 32;
-          spawnShockwave(tXY.x, tXY.y, 32);
+          G.boardShake = 4;
+          spawnShockwave(tXY.x, tXY.y, 4);
           showStamp(mode.isOimawashi ? '追い抜き討取' : '叩き', mode.isOimawashi ? '敵の殿石を討ち取る' : '孤石を中帯へ放逐す');
         }
 
@@ -248,9 +241,9 @@ function startMatch() {
           G.winReason = isMuji
             ? '無地勝ち・内陣六連荷完封'
             : (mode.canBearOff ? '全石盤外上がり完遂' : (mode.isOimawashi ? '追廻し六石討取完遂' : '全石内陣集結・入勝'));
-          G.boardShake = 56;
+          G.boardShake = 8;
           const bc = B();
-          spawnShockwave(bc.x + bc.w / 2, bc.y + bc.h / 2, 56);
+          spawnShockwave(bc.x + bc.w / 2, bc.y + bc.h / 2, 8);
           if (w === G.humanSide) playVictoryFanfare();
           else playDefeatBell();
           G.phase = 'SETTLEMENT';

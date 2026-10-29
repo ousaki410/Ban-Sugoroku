@@ -76,16 +76,22 @@ export const G = {
 
 export function spawnShockwave(boardX, boardY, mag = 1) {
   const intensity = Math.max(0.3, Math.min(1, mag));
-  G.shockwaves.push({ x: boardX, y: boardY, intensity, t: 0, life: 0.55 + intensity * 0.35 });
-  const count = Math.floor(18 + intensity * 14);
   const base = Math.max(10, mag);
+  // 金色冲击波环
+  G.shockwaves.push({ x: boardX, y: boardY, intensity, t: 0, life: 0.5 + intensity * 0.3 });
+  // 放射状刀锉火花 + 墨色木屑 (16~24 颗)
+  const count = Math.floor(16 + intensity * 8);
   for (let i = 0; i < count; i++) {
     const a = (Math.PI * 2 * i) / count + (Math.PI / count) * (Math.random() - 0.5);
-    const speed = 0.6 + Math.random() * 2.2 * base;
+    const kind = i % 3; // 0:金星火 1:朱火花 2:墨木屑
+    const speed = 0.7 + Math.random() * 1.8 * base;
     G.dust.push({
       x: boardX, y: boardY,
-      vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
-      life: 0.45 + Math.random() * 0.25, t: 0
+      vx: Math.cos(a) * speed,
+      vy: Math.sin(a) * speed - speed * 0.6, // 初速度抛上
+      gravity: kind === 2 ? 0.18 : 0.08,
+      life: 0.45 + Math.random() * 0.22, t: 0,
+      kind
     });
   }
 }

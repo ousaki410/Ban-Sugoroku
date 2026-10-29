@@ -145,8 +145,7 @@ export function render() {
     // 10. 時代別の振筒と賽
     drawEraShakerAndDice(mode);
 
-    // 10.5. 時代別家紋・浮世绘装飾
-    drawEraKamon(mode, b);
+    // 10.5. Era decorations live on the felt background layer instead.
 
     ctx.restore(); // -- board group end: UI below stays upright --
 
@@ -206,6 +205,32 @@ export function render() {
         ctx.fillStyle = '#162436';
         ctx.fillRect(cx - 3.5, cy - 3.5, 7, 7);
       });
+
+      // 江戸閺房·浮世绘：桜吹雪を薄く散らす（敷物層・盤面よ前面）
+      ctx.save();
+      ctx.globalAlpha = 0.14;
+      ctx.fillStyle = '#e8b4b8';
+      for (let i = 0; i < 22; i++) {
+        const px = mx + ((i * 41 + Math.floor(G.pulseTick * 7)) % (mw - 24));
+        const py = my + 24 + ((i * 67 + Math.floor(G.pulseTick * 5)) % (mh - 56));
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.bezierCurveTo(px - 3, py + 4, px + 5, py + 2, px + 2, py + 9);
+        ctx.bezierCurveTo(px + 6, py + 3, px + 9, py + 8, px + 12, py + 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (b.style === 'momoyama') {
+      // 戦国深文様：金箪くじろい家紋を低対比に刻じる（盤面よ前面に描かない）
+      ctx.save();
+      ctx.globalAlpha = 0.13;
+      const types = ['takeda_bishi', 'oda_mokko', 'sanada_rokumonsen', 'maru3hana'];
+      for (let i = 0; i < 8; i++) {
+        const kx = mx + 52 + ((i * 88 + Math.floor(G.pulseTick * 3)) % (mw - 104));
+        const ky = my + 60 + ((i * 53) % (mh - 120));
+        drawSengokuKamon(ctx, kx, ky, 16, types[i % types.length]);
+      }
+      ctx.restore();
     }
 
     ctx.strokeStyle = '#70441d';
@@ -1025,51 +1050,38 @@ export function drawDimpledStone(x, y, r, player, canMove, isSelected) {
     }
     ctx.restore();
   }
-  // ==================== 振動桶子·家紋·浮世图装饰 ====================
+  // ==================== 振動桶子·家紋·落子撃粉 ====================
   const SHOCK_RINGS = 3;
-
-  function applyBoardShake() {
-    const mag = G.boardShake;
-    if (!mag || mag <= 0) return;
-    const t = G.pulseTick * 6.2831853;
-    const f1 = Math.sin(t * 1.31 + 0.5);
-    const f2 = Math.sin(t * 2.21 - 0.4);
-    const f3 = Math.cos(t * 3.73 + 1.1);
-    const amp = Math.min(42, 16 + mag * 0.65);
-    const dx = (f1 * 0.6 + f2 * 0.4 + f3 * 0.3) * amp;
-    const dy = (Math.sin(t * 2.65) * 0.5) * amp * 0.6;
-    const rotMag = Math.min(2.8, mag * 0.032);
-    const rot = rotMag * f1 * 0.5;
-    const squash = 1 + Math.min(0.04, mag * 0.0018) * f2 * 0.6;
-    ctx.translate(dx, dy);
-    ctx.rotate(rot);
-    if (Math.abs(squash - 1) > 0.0001) ctx.scale(squash, 1 / squash);
-  }
 
   function renderShockwaves() {
     if (G.shockwaves.length === 0 && G.dust.length === 0) return;
     ctx.save();
     // shockwaves + dust live in device (canvas) space, not board space.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const cx = (typeof scale === 'number') ? scale : 1;
+    const sx = (typeof scale === 'number') ? scale : 1;
     const ox = (typeof offsetX === 'number') ? offsetX : 0;
     const oy = (typeof offsetY === 'number') ? offsetY : 0;
-    const toDev = (bx, by) => ({
-      x: ox + bx * cx,
-      y: oy + by * cx
-    });
+    const toDev = (bx, by) => ({ x: ox + bx * sx, y: oy + by * sx });
 
-    const now = G.pulseTick;
     const keptSw = [];
     G.shockwaves.forEach(sw => {
       sw.t += 0.016;
       const life = sw.t / sw.life;
       if (life >= 1) return;
       const dev = toDev(sw.x, sw.y);
+
+      // 落子点高光脉冲（短暂径向闪烝）
+      const flashR = 26 * sw.intensity * (1 - life);
+      const flashGrad = ctx.createRadialGradient(dev.x, dev.y, 0, dev.x, dev.y, flashR);
+      flashGrad.addColorStop(0, `rgba(245, 208, 113, ${0.32 * (1 - life) * sw.intensity})`);
+      flashGrad.addColorStop(1, `rgba(160, 34, 28, 0)`);
+      ctx.fillStyle = flashGrad;
+      ctx.fillRect(dev.x - flashR, dev.y - flashR, flashR * 2, flashR * 2);
+
+      // 金/朱色冲击波环
       const radius = (14 + life * 96) * sw.intensity;
-      const rings = SHOCK_RINGS;
-      for (let i = 0; i < rings; i++) {
-        const rt = (life * rings - i);
+      for (let i = 0; i < SHOCK_RINGS; i++) {
+        const rt = (life * SHOCK_RINGS - i);
         if (rt < 0 || rt > 1) continue;
         const alpha = (1 - rt) * 0.38 * sw.intensity * (i === 0 ? 1 : 0.55);
         ctx.beginPath();
@@ -1082,23 +1094,39 @@ export function drawDimpledStone(x, y, r, player, canMove, isSelected) {
     });
     G.shockwaves = keptSw;
 
+    // 放射状刀锉/火花 + 墨色木屑粒子（带重力与阻尼）
     const keptDust = [];
-    ctx.fillStyle = '#c99b3b';
     G.dust.forEach(d => {
       d.t += 0.016;
       const life = d.t / d.life;
       if (life >= 1) return;
+      d.vy += d.gravity;
+      d.vx *= 0.97;
       d.x += d.vx; d.y += d.vy;
       const dev = toDev(d.x, d.y);
-      ctx.globalAlpha = (1 - life) * 0.78;
+      const col = d.kind === 0 ? '#f5c442' : (d.kind === 1 ? '#c93722' : '#2b1406');
+      ctx.fillStyle = col;
+      ctx.globalAlpha = (1 - life) * 0.82;
       ctx.beginPath();
-      ctx.arc(dev.x, dev.y, 1.6 + (1 - life) * 0.8, 0, Math.PI * 2);
+      ctx.arc(dev.x, dev.y, 1.4 + (1 - life) * 0.9, 0, Math.PI * 2);
       ctx.fill();
       keptDust.push(d);
     });
     G.dust = keptDust;
     ctx.globalAlpha = 1;
     ctx.restore();
+  }
+
+  function applyBoardShake() {
+    // Critical-hit (hit / smashedIkka only) gets a tiny, short-lived VERTICAL
+    // micro-shake clamped to ~4-8px. No global rotation, no squash, no wild
+    // translation: the UI stays perfectly stable and the screen never spins.
+    const mag = G.boardShake;
+    if (!mag || mag <= 0) return;
+    const t = G.pulseTick * 6.2831853;
+    const amp = Math.min(8, Math.max(4, mag * 0.5));
+    const dy = Math.sin(t * 22.0) * amp * Math.exp(-mag * 0.02);
+    ctx.translate(0, dy);
   }
 
   // 戦國家紋ベクター描画
@@ -1169,69 +1197,3 @@ export function drawDimpledStone(x, y, r, player, canMove, isSelected) {
     ctx.restore();
   }
 
-  function drawEraKamon(mode, b) {
-    const laneH = (b.h - b.midH) / 2;
-    const cx = b.x + b.w / 2;
-    const midTopY = b.y + laneH;
-    const midBotY = midTopY + b.midH;
-
-    if (b.style === 'momoyama') {
-      // 大陛中央·家紋 + 左右上下がり盆 + 角錺金具
-      const big = 46;
-      drawSengokuKamon(ctx, cx, b.y + 46, big, 'takeda_bishi');
-      drawSengokuKamon(ctx, cx, b.y + b.h - 46, big, 'oda_mokko');
-      if (b.hasTray) {
-        drawSengokuKamon(ctx, b.trayX - 8, b.y + 110, 30, 'sanada_rokumonsen');
-        drawSengokuKamon(ctx, b.trayX - 8, b.y + b.h - 130, 30, 'maru3hana');
-      }
-      // 中央 midH 棒線上の家紋
-      drawSengokuKamon(ctx, cx - 96, midTopY + b.midH / 2, 34, 'takeda_bishi');
-      drawSengokuKamon(ctx, cx + 96, midBotY - b.midH / 3, 34, 'oda_mokko');
-      // 四隅錺金具の微小家紋
-      const small = 10;
-      [
-        [b.x + 14, b.y + 14],
-        [b.x + b.w - 14, b.y + 14],
-        [b.x + 14, b.y + b.h - 14],
-        [b.x + b.w - 14, b.y + b.h - 14]
-      ].forEach(([px, py]) => {
-        ctx.fillStyle = '#2b1406';
-        ctx.fillRect(px - 9, py - 9, 18, 18);
-        ctx.strokeStyle = '#b08724';
-        ctx.lineWidth = 1.3;
-        ctx.strokeRect(px - 9, py - 9, 18, 18);
-        drawSengokuKamon(ctx, px, py, small, 'takeda_bishi');
-      });
-    } else if (b.style === 'chonin') {
-      // 江戸閨房·浮世绘：飄落つ桜弁と浮世绘美人剪影
-      ctx.save();
-      ctx.fillStyle = 'rgba(242, 200, 95, 0.09)';
-      for (let i = 0; i < 28; i++) {
-        const px = b.x + ((i * 37 + Math.floor(G.pulseTick * 9)) % b.w);
-        const py = b.y + 12 + (i % 3) * 18;
-        ctx.beginPath();
-        ctx.moveTo(px, py);
-        ctx.bezierCurveTo(px - 3, py + 4, px + 5, py + 2, px + 2, py + 9);
-        ctx.bezierCurveTo(px + 6, py + 3, px + 9, py + 8, px + 12, py + 2);
-        ctx.fill();
-      }
-      ctx.restore();
-
-      // 壁面浮世绘屏風
-      ctx.save();
-      const fxFan = b.x - 90;
-      const fyFan = b.y + 48;
-      ctx.strokeStyle = '#2a1210';
-      ctx.lineWidth = 1.6;
-      ctx.strokeRect(fxFan, fyFan, 26, 230);
-      ctx.fillStyle = '#e3d3bf';
-      ctx.fillRect(fxFan, fyFan, 26, 36);
-      ctx.strokeStyle = '#c93722';
-      ctx.lineWidth = 1.3;
-      // 高嶺発髻·花冠剪影
-      ctx.beginPath(); ctx.arc(fxFan + 13, fyFan + 16, 4, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#5d3a36';
-      ctx.fillRect(fxFan + 5, fyFan + 38, 16, 46);
-      ctx.restore();
-    }
-  }

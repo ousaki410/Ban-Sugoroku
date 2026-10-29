@@ -996,9 +996,8 @@ done({ ok: true });
             "era 6 deterministic roll",
         );
         assert rolled["rolledPair"] is True, rolled;
-        assert rolled.get("shakeTicks", 0) >= 0, rolled;
+        # Rolling no longer shakes the desk; only stone-landing impacts do.
         self.assert_invariants(rolled, "era 6 after roll");
-        assert rolled.get("shakeTicks", 0) >= 1, "double-four should trigger the desk-shake impulse";
 
         # Apply the deterministic double-four move(s). Oimawashi has no combined
         # targets, so each die resolves to one stone hop.
